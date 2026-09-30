@@ -1,5 +1,624 @@
-const sb=supabase.createClient(OFFHOURS_CONFIG.supabaseUrl,OFFHOURS_CONFIG.supabaseKey),$=s=>document.querySelector(s);let data=[],grp="all";
-async function load(){$("#dashMsg").textContent="Lade Daten...";let{data:e,error:e0}=await sb.from("events").select("id").eq("name",OFFHOURS_CONFIG.eventName).single();if(e0)return msg(e0.message);let{data:p,error:e1}=await sb.from("players").select("id,name,group:groups(group_number)").eq("event_id",e.id).order("created_at");if(e1)return msg("Dashboard-Leserechte fehlen. Bitte setup_dashboard.sql ausführen.");let ids=(p||[]).map(x=>x.id),s=[];if(ids.length){let r=await sb.from("scores").select("player_id,sips,route_stop:route_stops(position)").in("player_id",ids);if(r.error)return msg(r.error.message);s=r.data||[]}let map={};s.forEach(x=>{map[x.player_id]??={};map[x.player_id][x.route_stop.position]=x.sips});data=(p||[]).map(x=>({name:x.name,g:x.group?.group_number||0,s:map[x.id]||{}}));$("#players").textContent=data.length;$("#groups").textContent=new Set(data.map(x=>x.g)).size;$("#holes").textContent=data.reduce((n,x)=>n+Object.keys(x.s).length,0);msg("Zuletzt aktualisiert: "+new Date().toLocaleTimeString("de-DE"));render()}
-function msg(t){$("#dashMsg").textContent=t}function esc(s){return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-function render(){let q=$("#search").value.toLowerCase(),r=data.filter(x=>(grp==="all"||String(x.g)===grp)&&(!q||x.name.toLowerCase().includes(q)));$("#rows").innerHTML=r.map(x=>{let v=Array.from({length:9},(_,i)=>x.s[i+1]??"–"),done=v.filter(z=>z!=="–").length,total=v.reduce((a,z)=>a+(z==="–"?0:+z),0);return `<tr><td>${esc(x.name)}</td><td class="orange">G${x.g}</td><td>${done}/9</td>${v.map(z=>`<td>${z}</td>`).join("")}<td class="orange">${total}</td></tr>`}).join("")||'<tr><td colspan="13">Keine Spieler gefunden.</td></tr>'}
-$("#refresh").onclick=load;$("#search").oninput=render;document.querySelectorAll("[data-g]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-g]").forEach(x=>x.classList.remove("active"));b.classList.add("active");grp=b.dataset.g;render()});load();setInterval(load,15000);
+const sb = supabase.createClient(
+  OFFHOURS_CONFIG.supabaseUrl,
+  OFFHOURS_CONFIG.supabaseKey
+);
+
+const $ = selector => document.querySelector(selector);
+
+let playersData = [];
+
+let activeFilter = "all";
+
+
+// ============================================
+// LOAD DASHBOARD
+// ============================================
+
+async function loadDashboard() {
+
+  $("#dashMsg").textContent =
+    "Lade OFFHOURS Daten...";
+
+
+  // EVENT LADEN
+
+  const {
+    data: event,
+    error: eventError
+  } = await sb
+    .from("events")
+    .select("id")
+    .eq(
+      "name",
+      OFFHOURS_CONFIG.eventName
+    )
+    .single();
+
+
+  if (eventError) {
+
+    showMessage(
+      "Event konnte nicht geladen werden: " +
+      eventError.message
+    );
+
+    return;
+  }
+
+
+
+  // ============================================
+  // PLAYERS LADEN
+  // ============================================
+
+  const {
+    data: players,
+    error: playersError
+  } = await sb
+    .from("players")
+    .select(`
+      id,
+      name,
+      completed,
+      created_at,
+      group:groups(
+        group_number
+      )
+    `)
+    .eq(
+      "event_id",
+      event.id
+    )
+    .order(
+      "created_at"
+    );
+
+
+  if (playersError) {
+
+    showMessage(
+      "Spieler konnten nicht geladen werden: " +
+      playersError.message
+    );
+
+    return;
+  }
+
+
+
+  // ============================================
+  // SCORES LADEN
+  // ============================================
+
+  const playerIds =
+    (players || []).map(
+      player => player.id
+    );
+
+
+  let scores = [];
+
+
+  if (playerIds.length > 0) {
+
+    const {
+      data: scoreData,
+      error: scoreError
+    } = await sb
+      .from("scores")
+      .select(`
+        player_id,
+        sips,
+        route_stop:route_stops(
+          position
+        )
+      `)
+      .in(
+        "player_id",
+        playerIds
+      );
+
+
+    if (scoreError) {
+
+      showMessage(
+        "Scores konnten nicht geladen werden: " +
+        scoreError.message
+      );
+
+      return;
+    }
+
+
+    scores = scoreData || [];
+
+  }
+
+
+
+  // ============================================
+  // SCORES NACH SPIELER SORTIEREN
+  // ============================================
+
+  const scoreMap = {};
+
+
+  scores.forEach(score => {
+
+    if (!scoreMap[score.player_id]) {
+
+      scoreMap[score.player_id] = {};
+
+    }
+
+
+    const position =
+      score.route_stop.position;
+
+
+    scoreMap[score.player_id][position] =
+      score.sips;
+
+  });
+
+
+
+  // ============================================
+  // PLAYER DATEN BAUEN
+  // ============================================
+
+  playersData =
+    (players || []).map(player => {
+
+      return {
+
+        id:
+          player.id,
+
+        name:
+          player.name,
+
+        group:
+          player.group?.group_number || 0,
+
+        completed:
+          player.completed === true,
+
+        scores:
+          scoreMap[player.id] || {}
+
+      };
+
+    });
+
+
+
+  // ============================================
+  // STATS
+  // ============================================
+
+  $("#players").textContent =
+    playersData.length;
+
+
+  $("#finished").textContent =
+    playersData.filter(
+      player => player.completed
+    ).length;
+
+
+  $("#groups").textContent =
+    new Set(
+      playersData.map(
+        player => player.group
+      )
+    ).size;
+
+
+  $("#holes").textContent =
+    playersData.reduce(
+      (total, player) => {
+
+        return (
+          total +
+          Object.keys(
+            player.scores
+          ).length
+        );
+
+      },
+      0
+    );
+
+
+
+  showMessage(
+    "Zuletzt aktualisiert: " +
+    new Date().toLocaleTimeString(
+      "de-DE"
+    )
+  );
+
+
+  renderTable();
+
+}
+
+
+
+// ============================================
+// TABLE RENDER
+// ============================================
+
+function renderTable() {
+
+  const search =
+    $("#search")
+      .value
+      .trim()
+      .toLowerCase();
+
+
+
+  let filtered =
+    playersData.filter(player => {
+
+
+      // GROUP FILTER
+
+      let matchesFilter = true;
+
+
+      if (
+        activeFilter ===
+        "finished"
+      ) {
+
+        matchesFilter =
+          player.completed;
+
+      }
+
+
+      else if (
+        activeFilter !==
+        "all"
+      ) {
+
+        matchesFilter =
+          String(player.group) ===
+          activeFilter;
+
+      }
+
+
+
+      // SEARCH
+
+      const matchesSearch =
+
+        !search ||
+
+        player.name
+          .toLowerCase()
+          .includes(search);
+
+
+
+      return (
+        matchesFilter &&
+        matchesSearch
+      );
+
+    });
+
+
+
+  // ============================================
+  // SORTIERUNG
+  // ============================================
+
+  filtered.sort((a, b) => {
+
+    // Fertige Spieler zuerst
+
+    if (
+      a.completed !==
+      b.completed
+    ) {
+
+      return (
+        b.completed -
+        a.completed
+      );
+
+    }
+
+
+    // Danach Gruppe
+
+    if (
+      a.group !==
+      b.group
+    ) {
+
+      return (
+        a.group -
+        b.group
+      );
+
+    }
+
+
+    // Danach Name
+
+    return (
+      a.name.localeCompare(
+        b.name
+      )
+    );
+
+  });
+
+
+
+  // ============================================
+  // HTML
+  // ============================================
+
+  $("#rows").innerHTML =
+
+    filtered.map(player => {
+
+
+      const values =
+        Array.from(
+          { length: 9 },
+          (_, index) => {
+
+            return (
+              player.scores[
+                index + 1
+              ] ?? "–"
+            );
+
+          }
+        );
+
+
+      const completedHoles =
+        values.filter(
+          value =>
+            value !== "–"
+        ).length;
+
+
+      const total =
+        values.reduce(
+          (sum, value) => {
+
+            if (
+              value === "–"
+            ) {
+
+              return sum;
+
+            }
+
+            return (
+              sum +
+              Number(value)
+            );
+
+          },
+          0
+        );
+
+
+      const status =
+        player.completed
+          ? "FINISHED"
+          : "PLAYING";
+
+
+      return `
+
+        <tr>
+
+          <td>
+            ${escapeHtml(
+              player.name
+            )}
+          </td>
+
+
+          <td class="orange">
+
+            G${player.group}
+
+          </td>
+
+
+          <td class="${
+            player.completed
+              ? "orange"
+              : ""
+          }">
+
+            ${status}
+
+          </td>
+
+
+          <td>
+
+            ${completedHoles}/9
+
+          </td>
+
+
+          ${values
+            .map(
+              value =>
+                `<td>${value}</td>`
+            )
+            .join("")}
+
+
+          <td class="orange">
+
+            ${total}
+
+          </td>
+
+        </tr>
+
+      `;
+
+    }).join("");
+
+
+
+  if (
+    filtered.length === 0
+  ) {
+
+    $("#rows").innerHTML = `
+
+      <tr>
+
+        <td colspan="14">
+
+          Keine Spieler gefunden.
+
+        </td>
+
+      </tr>
+
+    `;
+
+  }
+
+}
+
+
+
+// ============================================
+// SECURITY
+// ============================================
+
+function escapeHtml(value) {
+
+  return value.replace(
+    /[&<>"']/g,
+    character => ({
+
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+
+    })[character]
+  );
+
+}
+
+
+
+// ============================================
+// MESSAGE
+// ============================================
+
+function showMessage(text) {
+
+  $("#dashMsg").textContent =
+    text;
+
+}
+
+
+
+// ============================================
+// REFRESH
+// ============================================
+
+$("#refresh")
+  .addEventListener(
+    "click",
+    loadDashboard
+  );
+
+
+
+// ============================================
+// SEARCH
+// ============================================
+
+$("#search")
+  .addEventListener(
+    "input",
+    renderTable
+  );
+
+
+
+// ============================================
+// FILTER
+// ============================================
+
+document
+  .querySelectorAll(
+    "[data-g]"
+  )
+  .forEach(button => {
+
+    button.addEventListener(
+      "click",
+      () => {
+
+        document
+          .querySelectorAll(
+            "[data-g]"
+          )
+          .forEach(btn => {
+
+            btn.classList.remove(
+              "active"
+            );
+
+          });
+
+
+        button.classList.add(
+          "active"
+        );
+
+
+        activeFilter =
+          button.dataset.g;
+
+
+        renderTable();
+
+      }
+    );
+
+  });
+
+
+
+// ============================================
+// START
+// ============================================
+
+loadDashboard();
+
+
+
+// AUTO REFRESH ALLE 15 SEKUNDEN
+
+setInterval(
+  loadDashboard,
+  15000
+);
