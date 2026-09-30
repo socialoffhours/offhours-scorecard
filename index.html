@@ -1,8 +1,9 @@
-<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#050505"><title>OFFHOURS Scorecard</title><link rel="stylesheet" href="css/style.css"></head><body>
-<header><img src="assets/logo.svg" alt="OFFHOURS"><span id="groupBadge">GROUP --</span></header>
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#050505"><title>OFFHOURS Scorecard</title><link rel="stylesheet" href="style.css"></head><body>
+<header><img src="logo.svg" alt="OFFHOURS"><span id="groupBadge">GROUP --</span></header>
 <main class="shell">
 <section id="join" class="panel"><small>PUB GOLF / BONN</small><h1>READY TO<br><b>TEE OFF?</b></h1><p>Dein QR-Code legt deine Route fest. Gib nur deinen Namen ein.</p><form id="joinForm"><label>DEIN NAME</label><input id="name" maxlength="50" placeholder="z. B. Paul" required><button>START ROUND →</button></form><p id="error"></p></section>
 <section id="score" class="hidden"><div class="progressHead"><div><small>YOUR ROUND</small><strong id="player"></strong></div><b id="progressText"></b></div><div class="progress"><i id="bar"></i></div>
 <article class="hole"><div class="holeTop"><span id="num">01</span><em id="par">PAR 3</em></div><h2 id="barName"></h2><div class="drink"><small>DRINK</small><strong id="drink"></strong></div><div class="entry"><small>DEINE SCHLÜCKE</small><div class="counter"><button id="minus">−</button><strong id="value">1</strong><button id="plus">+</button></div></div><button id="save">SPEICHERN & WEITER →</button><div class="nav"><button id="prev">← ZURÜCK</button><button id="next">WEITER →</button></div><p id="msg"></p></article></section>
 <section id="finish" class="panel hidden"><small>ROUND COMPLETE</small><h1>9 / 9<br><b>HOLES.</b></h1><p><strong id="finishName"></strong>, deine Runde wurde gespeichert.</p><div class="total"><small>GESAMT</small><strong id="total">0</strong><span>eingetragene Schlücke</span></div><button id="review" class="outline">SCORECARD ANSEHEN</button></section>
-</main><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="js/config.js"></script><script src="js/app.js"></script></body></html>
+</main><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="config.js"></script>
+<script src="app.js"></script></body></html>
