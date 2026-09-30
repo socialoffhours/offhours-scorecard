@@ -3,288 +3,177 @@
 
 <head>
   <meta charset="utf-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1"
-  >
-
-  <meta
-    name="theme-color"
-    content="#050505"
-  >
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#050505">
 
   <title>OFFHOURS Control Room</title>
 
-  <!--
-    WICHTIG:
-    style.css liegt bei dir direkt im Hauptverzeichnis.
-  -->
-  <link
-    rel="stylesheet"
-    href="style.css"
-  >
+  <link rel="stylesheet" href="style.css">
 </head>
-
 
 <body>
 
-  <!-- =========================================
-       HEADER
-       ========================================= -->
+<header>
+  <a href="index.html">
+    <img src="logo.svg" alt="OFFHOURS">
+  </a>
 
-  <header>
-
-    <a href="index.html">
-      <img
-        src="logo.svg"
-        alt="OFFHOURS"
-      >
-    </a>
-
-    <span>
-      CONTROL ROOM
-    </span>
-
-  </header>
+  <span>CONTROL ROOM</span>
+</header>
 
 
+<main class="dashboard">
 
-  <!-- =========================================
-       DASHBOARD
-       ========================================= -->
+  <!-- HEADER -->
 
-  <main class="dashboard">
+  <div class="dashHead">
 
+    <div>
+      <small>PUB GOLF / BONN</small>
 
-    <!-- HEADLINE -->
+      <h1>
+        CONTROL<br>
+        <b>ROOM.</b>
+      </h1>
+    </div>
 
-    <div class="dashHead">
+    <button id="refresh">
+      REFRESH ↻
+    </button>
 
-      <div>
-
-        <small>
-          PUB GOLF / BONN
-        </small>
-
-        <h1>
-          CONTROL<br>
-          <b>ROOM.</b>
-        </h1>
-
-      </div>
+  </div>
 
 
-      <button id="refresh">
-        REFRESH ↻
+  <!-- LIVE STATS -->
+
+  <div class="stats">
+
+    <article>
+      <small>PLAYERS</small>
+      <strong id="players">0</strong>
+    </article>
+
+    <article>
+      <small>FINISHED</small>
+      <strong id="finished">0</strong>
+    </article>
+
+    <article>
+      <small>GROUPS</small>
+      <strong id="groups">0</strong>
+    </article>
+
+    <article>
+      <small>HOLES COMPLETED</small>
+      <strong id="holes">0</strong>
+    </article>
+
+  </div>
+
+
+  <!-- FILTER -->
+
+  <div class="tools">
+
+    <input
+      id="search"
+      type="search"
+      placeholder="SPIELER SUCHEN..."
+    >
+
+    <div id="filters">
+
+      <button
+        class="active"
+        data-g="all">
+        ALLE
       </button>
 
-    </div>
+      <button data-g="finished">
+        FINISHED
+      </button>
 
-
-
-    <!-- =========================================
-         STATISTIK
-         ========================================= -->
-
-    <div class="stats">
-
-      <article>
-
-        <small>
-          PLAYERS
-        </small>
-
-        <strong id="players">
-          0
-        </strong>
-
-      </article>
-
-
-      <article>
-
-        <small>
-          GROUPS
-        </small>
-
-        <strong id="groups">
-          0
-        </strong>
-
-      </article>
-
-
-      <article>
-
-        <small>
-          HOLES COMPLETED
-        </small>
-
-        <strong id="holes">
-          0
-        </strong>
-
-      </article>
+      <button data-g="1">G1</button>
+      <button data-g="2">G2</button>
+      <button data-g="3">G3</button>
+      <button data-g="4">G4</button>
+      <button data-g="5">G5</button>
 
     </div>
 
+  </div>
 
 
-    <!-- =========================================
-         SUCHE + GRUPPENFILTER
-         ========================================= -->
+  <!-- PLAYER RESULTS -->
 
-    <div class="tools">
+  <div class="table">
 
-      <input
-        id="search"
-        type="search"
-        placeholder="SPIELER SUCHEN..."
-      >
+    <table>
 
+      <thead>
 
-      <div id="filters">
+        <tr>
 
-        <button
-          class="active"
-          data-g="all"
-        >
-          ALLE
-        </button>
+          <th>PLAYER</th>
+          <th>GROUP</th>
+          <th>STATUS</th>
+          <th>PROGRESS</th>
 
-        <button data-g="1">
-          G1
-        </button>
+          <th>H1</th>
+          <th>H2</th>
+          <th>H3</th>
+          <th>H4</th>
+          <th>H5</th>
+          <th>H6</th>
+          <th>H7</th>
+          <th>H8</th>
+          <th>H9</th>
 
-        <button data-g="2">
-          G2
-        </button>
+          <th>TOTAL</th>
 
-        <button data-g="3">
-          G3
-        </button>
+        </tr>
 
-        <button data-g="4">
-          G4
-        </button>
-
-        <button data-g="5">
-          G5
-        </button>
-
-      </div>
-
-    </div>
+      </thead>
 
 
+      <tbody id="rows">
 
-    <!-- =========================================
-         SPIELER-TABELLE
-         ========================================= -->
+        <!-- Wird automatisch von dashboard.js gefüllt -->
 
-    <div class="table">
+      </tbody>
 
-      <table>
+    </table>
 
-        <thead>
-
-          <tr>
-
-            <th>
-              PLAYER
-            </th>
-
-            <th>
-              GROUP
-            </th>
-
-            <th>
-              PROGRESS
-            </th>
-
-            <th>H1</th>
-            <th>H2</th>
-            <th>H3</th>
-            <th>H4</th>
-            <th>H5</th>
-            <th>H6</th>
-            <th>H7</th>
-            <th>H8</th>
-            <th>H9</th>
-
-            <th>
-              TOTAL
-            </th>
-
-          </tr>
-
-        </thead>
+  </div>
 
 
-        <tbody id="rows">
-
-          <!--
-            Die Spieler werden automatisch
-            von dashboard.js eingefügt.
-          -->
-
-        </tbody>
-
-      </table>
-
-    </div>
+  <p id="dashMsg"></p>
 
 
+  <!-- HINWEIS -->
 
-    <!-- STATUS -->
+  <aside>
 
-    <p id="dashMsg"></p>
+    <b>OFFHOURS TEST CONTROL ROOM</b>
 
+    <p>
+      Die Werte dienen der internen Eventübersicht.
+      Vor einem öffentlichen Einsatz sollte dieser
+      Bereich über einen echten Admin-Login geschützt werden.
+    </p>
 
+  </aside>
 
-    <!-- =========================================
-         TEST-HINWEIS
-         ========================================= -->
-
-    <aside>
-
-      <b>
-        TEST VERSION
-      </b>
-
-      <p>
-        Dieses Dashboard ist für das
-        OFFHOURS Probe-Event gedacht.
-        Vor einem öffentlichen Event sollte
-        der Admin-Bereich mit einer echten
-        Anmeldung geschützt werden.
-      </p>
-
-    </aside>
+</main>
 
 
-  </main>
+<!-- SUPABASE -->
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
+<script src="config.js"></script>
 
-  <!-- =========================================
-       SUPABASE
-       ========================================= -->
-
-  <script
-    src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2">
-  </script>
-
-
-  <!--
-    Bei dir liegen config.js und dashboard.js
-    direkt im Hauptverzeichnis.
-  -->
-
-  <script src="config.js"></script>
-
-  <script src="dashboard.js"></script>
+<script src="dashboard.js"></script>
 
 
 </body>
