@@ -1,10 +1,994 @@
-const sb=supabase.createClient(OFFHOURS_CONFIG.supabaseUrl,OFFHOURS_CONFIG.supabaseKey),q=new URLSearchParams(location.search),gn=+q.get("group");let eid,gid,route=[],pid,pname="",cur=0,sips=1,saved={};const $=s=>document.querySelector(s);
-if(!Number.isInteger(gn)||gn<1||gn>5){$("#error").textContent="Ungültiger Gruppenlink. Bitte QR-Code eurer Gruppe scannen.";$("#joinForm button").disabled=true}else $("#groupBadge").textContent=`GROUP 0${gn}`;
-async function init(){if(!gn)return;let{data:e,error:a}=await sb.from("events").select("id").eq("name",OFFHOURS_CONFIG.eventName).single();if(a)return err("Event konnte nicht geladen werden.");eid=e.id;let{data:g,error:b}=await sb.from("groups").select("id").eq("event_id",eid).eq("group_number",gn).single();if(b)return err("Gruppe konnte nicht geladen werden.");gid=g.id;let{data:r,error:c}=await sb.from("route_stops").select("id,position,hole:holes(bar_name,drink,par)").eq("group_id",gid).order("position");if(c)return err("Route konnte nicht geladen werden.");route=r;let l=JSON.parse(localStorage.getItem(`oh_g${gn}`)||"null");if(l?.pid){({pid,pname,saved={},cur=0}=l);show()}}init();
-function err(t){$("#error").textContent=t}function persist(){localStorage.setItem(`oh_g${gn}`,JSON.stringify({pid,pname,saved,cur}))}
-$("#joinForm").onsubmit=async e=>{e.preventDefault();pname=$("#name").value.trim();if(!pname)return;pid=crypto.randomUUID();let{error}=await sb.from("players").insert({id:pid,event_id:eid,group_id:gid,name:pname});if(error)return err("Anmeldung fehlgeschlagen: "+error.message);persist();show()};
-function show(){$("#join").classList.add("hidden");$("#finish").classList.add("hidden");$("#score").classList.remove("hidden");$("#player").textContent=pname;render()}
-function render(){let s=route[cur],h=s.hole;$("#num").textContent=String(cur+1).padStart(2,"0");$("#par").textContent=`PAR ${h.par}`;$("#barName").textContent=h.bar_name;$("#drink").textContent=h.drink;$("#progressText").textContent=`${cur+1} / 9`;$("#bar").style.width=`${(cur+1)/9*100}%`;sips=saved[s.id]??1;$("#value").textContent=sips;$("#prev").style.visibility=cur?"visible":"hidden";$("#next").style.visibility=cur<8?"visible":"hidden";$("#msg").textContent=saved[s.id]!=null?"✓ GESPEICHERT":""}
-$("#minus").onclick=()=>{$("#value").textContent=sips=Math.max(1,sips-1)};$("#plus").onclick=()=>{$("#value").textContent=sips=Math.min(99,sips+1)};$("#prev").onclick=()=>{if(cur){cur--;persist();render()}};$("#next").onclick=()=>{if(cur<8){cur++;persist();render()}};
-$("#save").onclick=async()=>{let s=route[cur],{error}=await sb.from("scores").upsert({player_id:pid,route_stop_id:s.id,sips,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()},{onConflict:"player_id,route_stop_id"});if(error)return $("#msg").textContent="Fehler: "+error.message;saved[s.id]=sips;if(cur===8){persist();await finish()}else{cur++;persist();render()}};
-async function finish(){await sb.from("players").update({completed:true}).eq("id",pid);$("#score").classList.add("hidden");$("#finish").classList.remove("hidden");$("#finishName").textContent=pname.toUpperCase();$("#total").textContent=Object.values(saved).reduce((a,b)=>a+ +b,0)}$("#review").onclick=()=>{cur=0;persist();show()};
+const sb = supabase.createClient(
+  OFFHOURS_CONFIG.supabaseUrl,
+  OFFHOURS_CONFIG.supabaseKey
+);
+
+
+const q =
+  new URLSearchParams(
+    location.search
+  );
+
+
+const groupNumber =
+  Number(
+    q.get("group")
+  );
+
+
+let eventId;
+
+let groupId;
+
+let route = [];
+
+let playerId;
+
+let playerName = "";
+
+let current = 0;
+
+let sips = 1;
+
+let saved = {};
+
+let roundFinished = false;
+
+
+const $ =
+  selector =>
+    document.querySelector(
+      selector
+    );
+
+
+
+// =============================================
+// GROUP VALIDATION
+// =============================================
+
+
+if (
+  !Number.isInteger(
+    groupNumber
+  ) ||
+
+  groupNumber < 1 ||
+
+  groupNumber > 5
+) {
+
+  $("#error").textContent =
+    "Ungültiger Gruppenlink. Bitte QR-Code eurer Gruppe scannen.";
+
+
+  $("#joinForm button")
+    .disabled = true;
+
+}
+
+else {
+
+  $("#groupBadge")
+    .textContent =
+      `GROUP 0${groupNumber}`;
+
+}
+
+
+
+// =============================================
+// INITIALIZE
+// =============================================
+
+
+async function init() {
+
+
+  if (!groupNumber) {
+
+    return;
+
+  }
+
+
+
+  // EVENT
+
+
+  const {
+    data: event,
+    error: eventError
+  } = await sb
+    .from("events")
+    .select("id")
+    .eq(
+      "name",
+      OFFHOURS_CONFIG.eventName
+    )
+    .single();
+
+
+  if (eventError) {
+
+    return showError(
+      "Event konnte nicht geladen werden."
+    );
+
+  }
+
+
+  eventId =
+    event.id;
+
+
+
+  // GROUP
+
+
+  const {
+    data: group,
+    error: groupError
+  } = await sb
+    .from("groups")
+    .select("id")
+    .eq(
+      "event_id",
+      eventId
+    )
+    .eq(
+      "group_number",
+      groupNumber
+    )
+    .single();
+
+
+  if (groupError) {
+
+    return showError(
+      "Gruppe konnte nicht geladen werden."
+    );
+
+  }
+
+
+  groupId =
+    group.id;
+
+
+
+  // ROUTE
+
+
+  const {
+    data: routeData,
+    error: routeError
+  } = await sb
+    .from("route_stops")
+    .select(`
+      id,
+      position,
+      hole:holes(
+        bar_name,
+        drink,
+        par
+      )
+    `)
+    .eq(
+      "group_id",
+      groupId
+    )
+    .order(
+      "position"
+    );
+
+
+  if (
+    routeError ||
+    !routeData
+  ) {
+
+    return showError(
+      "Route konnte nicht geladen werden."
+    );
+
+  }
+
+
+  route =
+    routeData;
+
+
+
+  // LOCAL PLAYER SESSION
+
+
+  const storageKey =
+    `oh_g${groupNumber}`;
+
+
+  const localData =
+    JSON.parse(
+      localStorage.getItem(
+        storageKey
+      ) || "null"
+    );
+
+
+  if (
+    localData?.pid
+  ) {
+
+    playerId =
+      localData.pid;
+
+    playerName =
+      localData.pname;
+
+    saved =
+      localData.saved || {};
+
+    current =
+      localData.cur || 0;
+
+    roundFinished =
+      localData.roundFinished === true;
+
+
+    if (
+      roundFinished
+    ) {
+
+      showFinalResults();
+
+    }
+
+    else {
+
+      showScorecard();
+
+    }
+
+  }
+
+}
+
+
+
+init();
+
+
+
+// =============================================
+// ERROR
+// =============================================
+
+
+function showError(
+  text
+) {
+
+  $("#error")
+    .textContent =
+      text;
+
+}
+
+
+
+// =============================================
+// SAVE LOCAL SESSION
+// =============================================
+
+
+function persist() {
+
+  localStorage.setItem(
+
+    `oh_g${groupNumber}`,
+
+    JSON.stringify({
+
+      pid:
+        playerId,
+
+      pname:
+        playerName,
+
+      saved:
+        saved,
+
+      cur:
+        current,
+
+      roundFinished:
+        roundFinished
+
+    })
+
+  );
+
+}
+
+
+
+// =============================================
+// PLAYER REGISTRATION
+// =============================================
+
+
+$("#joinForm")
+  .onsubmit =
+  async event => {
+
+
+    event.preventDefault();
+
+
+    playerName =
+      $("#name")
+        .value
+        .trim();
+
+
+    if (
+      !playerName
+    ) {
+
+      return;
+
+    }
+
+
+    playerId =
+      crypto.randomUUID();
+
+
+    const {
+      error
+    } = await sb
+      .from("players")
+      .insert({
+
+        id:
+          playerId,
+
+        event_id:
+          eventId,
+
+        group_id:
+          groupId,
+
+        name:
+          playerName
+
+      });
+
+
+    if (
+      error
+    ) {
+
+      return showError(
+        "Anmeldung fehlgeschlagen: " +
+        error.message
+      );
+
+    }
+
+
+    persist();
+
+
+    showScorecard();
+
+  };
+
+
+
+// =============================================
+// SCORECARD
+// =============================================
+
+
+function showScorecard() {
+
+
+  if (
+    roundFinished
+  ) {
+
+    showFinalResults();
+
+    return;
+
+  }
+
+
+  $("#join")
+    .classList
+    .add(
+      "hidden"
+    );
+
+
+  $("#finish")
+    .classList
+    .add(
+      "hidden"
+    );
+
+
+  $("#score")
+    .classList
+    .remove(
+      "hidden"
+    );
+
+
+  $("#player")
+    .textContent =
+      playerName;
+
+
+  renderHole();
+
+}
+
+
+
+// =============================================
+// RENDER HOLE
+// =============================================
+
+
+function renderHole() {
+
+
+  if (
+    roundFinished
+  ) {
+
+    showFinalResults();
+
+    return;
+
+  }
+
+
+  const stop =
+    route[current];
+
+
+  const hole =
+    stop.hole;
+
+
+  $("#num")
+    .textContent =
+      String(
+        current + 1
+      )
+      .padStart(
+        2,
+        "0"
+      );
+
+
+  $("#par")
+    .textContent =
+      `PAR ${hole.par}`;
+
+
+  $("#barName")
+    .textContent =
+      hole.bar_name;
+
+
+  $("#drink")
+    .textContent =
+      hole.drink;
+
+
+  $("#progressText")
+    .textContent =
+      `${current + 1} / 9`;
+
+
+  $("#bar")
+    .style
+    .width =
+      `${(
+        (current + 1) /
+        9
+      ) * 100}%`;
+
+
+  sips =
+    saved[
+      stop.id
+    ] ?? 1;
+
+
+  $("#value")
+    .textContent =
+      sips;
+
+
+  $("#prev")
+    .style
+    .visibility =
+      current > 0
+        ? "visible"
+        : "hidden";
+
+
+  $("#next")
+    .style
+    .visibility =
+      current < 8
+        ? "visible"
+        : "hidden";
+
+
+  $("#msg")
+    .textContent =
+
+      saved[
+        stop.id
+      ] !== undefined
+
+        ? "✓ GESPEICHERT"
+
+        : "";
+
+}
+
+
+
+// =============================================
+// COUNTER
+// =============================================
+
+
+$("#minus")
+  .onclick =
+  () => {
+
+    if (
+      roundFinished
+    ) {
+
+      return;
+
+    }
+
+
+    sips =
+      Math.max(
+        1,
+        sips - 1
+      );
+
+
+    $("#value")
+      .textContent =
+        sips;
+
+  };
+
+
+
+$("#plus")
+  .onclick =
+  () => {
+
+    if (
+      roundFinished
+    ) {
+
+      return;
+
+    }
+
+
+    sips =
+      Math.min(
+        99,
+        sips + 1
+      );
+
+
+    $("#value")
+      .textContent =
+        sips;
+
+  };
+
+
+
+// =============================================
+// NAVIGATION
+// =============================================
+
+
+$("#prev")
+  .onclick =
+  () => {
+
+    if (
+      roundFinished
+    ) {
+
+      return;
+
+    }
+
+
+    if (
+      current > 0
+    ) {
+
+      current--;
+
+      persist();
+
+      renderHole();
+
+    }
+
+  };
+
+
+
+$("#next")
+  .onclick =
+  () => {
+
+    if (
+      roundFinished
+    ) {
+
+      return;
+
+    }
+
+
+    if (
+      current < 8
+    ) {
+
+      current++;
+
+      persist();
+
+      renderHole();
+
+    }
+
+  };
+
+
+
+// =============================================
+// SAVE SCORE
+// =============================================
+
+
+$("#save")
+  .onclick =
+  async () => {
+
+
+    if (
+      roundFinished
+    ) {
+
+      return;
+
+    }
+
+
+    const stop =
+      route[current];
+
+
+    const {
+      error
+    } = await sb
+      .from("scores")
+      .upsert(
+        {
+
+          player_id:
+            playerId,
+
+          route_stop_id:
+            stop.id,
+
+          sips:
+            sips,
+
+          completed_at:
+            new Date()
+              .toISOString(),
+
+          updated_at:
+            new Date()
+              .toISOString()
+
+        },
+
+        {
+
+          onConflict:
+            "player_id,route_stop_id"
+
+        }
+
+      );
+
+
+    if (
+      error
+    ) {
+
+      $("#msg")
+        .textContent =
+          "Fehler: " +
+          error.message;
+
+      return;
+
+    }
+
+
+    saved[
+      stop.id
+    ] =
+      sips;
+
+
+
+    // LAST HOLE
+
+
+    if (
+      current === 8
+    ) {
+
+      await finishRound();
+
+      return;
+
+    }
+
+
+
+    current++;
+
+
+    persist();
+
+
+    renderHole();
+
+  };
+
+
+
+// =============================================
+// FINISH ROUND
+// =============================================
+
+
+async function finishRound() {
+
+
+  roundFinished =
+    true;
+
+
+  await sb
+    .from("players")
+    .update({
+
+      completed:
+        true
+
+    })
+    .eq(
+      "id",
+      playerId
+    );
+
+
+  persist();
+
+
+  showFinalResults();
+
+}
+
+
+
+// =============================================
+// FINAL RESULTS
+// =============================================
+
+
+function showFinalResults() {
+
+
+  $("#join")
+    .classList
+    .add(
+      "hidden"
+    );
+
+
+  $("#score")
+    .classList
+    .add(
+      "hidden"
+    );
+
+
+  $("#finish")
+    .classList
+    .remove(
+      "hidden"
+    );
+
+
+  $("#finishName")
+    .textContent =
+      playerName.toUpperCase();
+
+
+
+  const total =
+    Object
+      .values(
+        saved
+      )
+      .reduce(
+        (
+          sum,
+          value
+        ) =>
+          sum +
+          Number(value),
+        0
+      );
+
+
+  $("#total")
+    .textContent =
+      total;
+
+
+
+  // BUILD FINAL SCORECARD
+
+
+  $("#finalResults")
+    .innerHTML =
+
+      route
+        .map(
+          (
+            stop,
+            index
+          ) => {
+
+
+            const hole =
+              stop.hole;
+
+
+            const score =
+              saved[
+                stop.id
+              ] ?? "–";
+
+
+            return `
+
+              <div
+                class="finalResultRow"
+              >
+
+                <span
+                  class="finalHole"
+                >
+                  ${String(
+                    index + 1
+                  ).padStart(
+                    2,
+                    "0"
+                  )}
+                </span>
+
+
+                <strong
+                  class="finalBar"
+                >
+                  ${escapeHtml(
+                    hole.bar_name
+                  )}
+                </strong>
+
+
+                <span
+                  class="finalDrink"
+                >
+                  ${escapeHtml(
+                    hole.drink
+                  )}
+                </span>
+
+
+                <span
+                  class="finalPar"
+                >
+                  PAR ${hole.par}
+                </span>
+
+
+                <strong
+                  class="finalScore"
+                >
+                  ${score}
+                </strong>
+
+              </div>
+
+            `;
+
+          }
+        )
+        .join("");
+
+}
+
+
+
+// =============================================
+// SAFE TEXT
+// =============================================
+
+
+function escapeHtml(
+  value
+) {
+
+  return String(value)
+    .replace(
+
+      /[&<>"']/g,
+
+      character => ({
+
+        "&":
+          "&amp;",
+
+        "<":
+          "&lt;",
+
+        ">":
+          "&gt;",
+
+        '"':
+          "&quot;",
+
+        "'":
+          "&#39;"
+
+      })[
+        character
+      ]
+
+    );
+
+}
