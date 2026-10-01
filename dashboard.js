@@ -1,278 +1,137 @@
 // =============================================
 // OFFHOURS CONTROL ROOM
-// dashboard.js
+// LIVE RUN + ARCHIVE SYSTEM
 // =============================================
-
-
-// SUPABASE CLIENT
 
 const sb = supabase.createClient(
   OFFHOURS_CONFIG.supabaseUrl,
   OFFHOURS_CONFIG.supabaseKey
 );
 
-
-// SHORT SELECTOR
-
-const $ = selector =>
-  document.querySelector(selector);
+const $ = selector => document.querySelector(selector);
 
 
 // =============================================
-// GLOBAL STATE
+// STATE
 // =============================================
+
+let eventId = null;
+
+let currentRun = 1;
+
+let displayedRun = 1;
+
+let archiveMode = false;
 
 let playersData = [];
 
 let activeFilter = "all";
 
-let selectedEventId = null;
-
-let eventsData = [];
-
 
 // =============================================
-// LOAD EVENTS / DURCHGÄNGE
+// INITIALIZE
 // =============================================
 
-async function loadEvents() {
+async function initDashboard() {
 
-  showMessage(
-    "Lade Durchgänge..."
-  );
+  showMessage("Lade OFFHOURS Control Room...");
 
+
+  // EVENT LADEN
 
   const {
-    data: events,
-    error
+    data: event,
+    error: eventError
   } = await sb
     .from("events")
-    .select(`
-      id,
-      name,
-      city,
-      event_date,
-      created_at
-    `)
-    .order(
-      "created_at",
-      {
-        ascending: false
-      }
-    );
+    .select("id")
+    .eq(
+      "name",
+      OFFHOURS_CONFIG.eventName
+    )
+    .single();
 
 
-  if (error) {
+  if (eventError || !event) {
 
     showMessage(
-      "Events konnten nicht geladen werden: " +
-      error.message
+      "Event konnte nicht geladen werden: " +
+      (
+        eventError?.message ||
+        "Event nicht gefunden"
+      )
     );
 
     return;
   }
 
 
-  eventsData =
-    events || [];
+  eventId = event.id;
 
 
-  const select =
-    $("#eventSelect");
+  // =============================================
+  // AKTUELLEN RUN LADEN
+  // =============================================
+
+  const {
+    data: state,
+    error: stateError
+  } = await sb
+    .from("event_state")
+    .select("current_run")
+    .eq(
+      "event_id",
+      eventId
+    )
+    .single();
 
 
-  if (!select) {
+  if (stateError || !state) {
 
     showMessage(
-      "Event-Auswahl wurde in dashboard.html nicht gefunden."
+      "Durchgangsstatus konnte nicht geladen werden. " +
+      "Bitte prüfe event_state in Supabase."
     );
 
     return;
   }
 
 
-  // Keine Events vorhanden
+  currentRun = state.current_run;
 
-  if (
-    eventsData.length === 0
-  ) {
+  displayedRun = currentRun;
 
-    select.innerHTML = `
-      <option>
-        Keine Events vorhanden
-      </option>
-    `;
+  archiveMode = false;
 
 
-    showMessage(
-      "Keine OFFHOURS Events gefunden."
-    );
+  updateRunLabel();
 
+  updateArchiveButton();
 
-    return;
-  }
-
-
-  // Dropdown aufbauen
-
-  select.innerHTML =
-
-    eventsData
-      .map(event => {
-
-
-        let dateText =
-          "ohne Datum";
-
-
-        if (
-          event.event_date
-        ) {
-
-          const date =
-            new Date(
-              event.event_date +
-              "T12:00:00"
-            );
-
-
-          dateText =
-            date.toLocaleDateString(
-              "de-DE"
-            );
-
-        }
-
-
-        return `
-
-          <option
-            value="${event.id}"
-          >
-
-            ${escapeHtml(
-              event.name
-            )}
-
-            · ${dateText}
-
-          </option>
-
-        `;
-
-      })
-      .join("");
-
-
-  // Standard:
-  // neuester Durchgang
-
-  selectedEventId =
-    eventsData[0].id;
-
-
-  select.value =
-    selectedEventId;
-
-
-  // Bei Auswahl wechseln
-
-  select.addEventListener(
-    "change",
-    () => {
-
-
-      selectedEventId =
-        select.value;
-
-
-      // Suche zurücksetzen
-
-      const search =
-        $("#search");
-
-
-      if (search) {
-
-        search.value = "";
-
-      }
-
-
-      // Filter zurücksetzen
-
-      activeFilter =
-        "all";
-
-
-      document
-        .querySelectorAll(
-          "[data-g]"
-        )
-        .forEach(button => {
-
-          button.classList.remove(
-            "active"
-          );
-
-        });
-
-
-      const allButton =
-        document.querySelector(
-          '[data-g="all"]'
-        );
-
-
-      if (allButton) {
-
-        allButton.classList.add(
-          "active"
-        );
-
-      }
-
-
-      loadDashboard();
-
-    }
-  );
-
-
-  // Erstes Event laden
 
   await loadDashboard();
-
 }
 
 
-
 // =============================================
-// LOAD DASHBOARD
+// LOAD CURRENT / ARCHIVED RUN
 // =============================================
 
 async function loadDashboard() {
 
-
-  if (
-    !selectedEventId
-  ) {
-
+  if (!eventId) {
     return;
-
   }
 
 
   showMessage(
-    "Lade OFFHOURS Daten..."
+    `Lade Run ${String(displayedRun).padStart(2, "0")}...`
   );
-
 
 
   // =============================================
   // PLAYERS
   // =============================================
-
 
   const {
     data: players,
@@ -284,13 +143,18 @@ async function loadDashboard() {
       name,
       completed,
       created_at,
+      run_number,
       group:groups(
         group_number
       )
     `)
     .eq(
       "event_id",
-      selectedEventId
+      eventId
+    )
+    .eq(
+      "run_number",
+      displayedRun
     )
     .order(
       "created_at",
@@ -300,9 +164,7 @@ async function loadDashboard() {
     );
 
 
-  if (
-    playersError
-  ) {
+  if (playersError) {
 
     showMessage(
       "Spieler konnten nicht geladen werden: " +
@@ -313,33 +175,24 @@ async function loadDashboard() {
   }
 
 
-
   // =============================================
   // PLAYER IDS
   // =============================================
 
-
   const playerIds =
-    (players || [])
-      .map(
-        player =>
-          player.id
-      );
-
+    (players || []).map(
+      player => player.id
+    );
 
 
   // =============================================
   // SCORES
   // =============================================
 
-
   let scores = [];
 
 
-  if (
-    playerIds.length > 0
-  ) {
-
+  if (playerIds.length > 0) {
 
     const {
       data: scoreData,
@@ -359,9 +212,7 @@ async function loadDashboard() {
       );
 
 
-    if (
-      scoreError
-    ) {
+    if (scoreError) {
 
       showMessage(
         "Scores konnten nicht geladen werden: " +
@@ -372,129 +223,82 @@ async function loadDashboard() {
     }
 
 
-    scores =
-      scoreData || [];
-
+    scores = scoreData || [];
   }
-
 
 
   // =============================================
   // SCORE MAP
   // =============================================
 
-
   const scoreMap = {};
 
 
-  scores.forEach(
-    score => {
+  scores.forEach(score => {
 
+    if (!scoreMap[score.player_id]) {
 
-      if (
-        !scoreMap[
-          score.player_id
-        ]
-      ) {
-
-        scoreMap[
-          score.player_id
-        ] = {};
-
-      }
-
-
-      const position =
-        score
-          .route_stop
-          ?.position;
-
-
-      if (
-        position
-      ) {
-
-        scoreMap[
-          score.player_id
-        ][position] =
-          score.sips;
-
-      }
-
+      scoreMap[score.player_id] = {};
     }
-  );
 
+
+    const position =
+      score.route_stop?.position;
+
+
+    if (position) {
+
+      scoreMap[
+        score.player_id
+      ][position] = score.sips;
+    }
+
+  });
 
 
   // =============================================
   // PLAYER DATA
   // =============================================
 
-
   playersData =
-    (players || [])
-      .map(
-        player => {
+    (players || []).map(
+      player => ({
 
+        id:
+          player.id,
 
-          return {
+        name:
+          player.name,
 
-            id:
-              player.id,
+        group:
+          player.group?.group_number || 0,
 
-            name:
-              player.name,
+        completed:
+          player.completed === true,
 
-            group:
-              player
-                .group
-                ?.group_number || 0,
+        run:
+          player.run_number,
 
-            completed:
-              player.completed === true,
+        scores:
+          scoreMap[player.id] || {}
 
-            scores:
-              scoreMap[
-                player.id
-              ] || {}
-
-          };
-
-        }
-      );
-
-
-
-  // =============================================
-  // UPDATE STATISTICS
-  // =============================================
+      })
+    );
 
 
   updateStatistics();
 
-
-
-  // =============================================
-  // RENDER
-  // =============================================
-
-
   renderTable();
+
+  updateRunLabel();
 
 
   showMessage(
-
-    "Zuletzt aktualisiert: " +
-
-    new Date()
-      .toLocaleTimeString(
-        "de-DE"
-      )
-
+    `${archiveMode ? "ARCHIV" : "LIVE"} · ` +
+    `RUN ${String(displayedRun).padStart(2, "0")} · ` +
+    `zuletzt aktualisiert ${new Date().toLocaleTimeString("de-DE")}`
   );
-
 }
-
 
 
 // =============================================
@@ -503,131 +307,101 @@ async function loadDashboard() {
 
 function updateStatistics() {
 
-
-  // PLAYERS
-
   const playersElement =
     $("#players");
-
-
-  if (
-    playersElement
-  ) {
-
-    playersElement.textContent =
-      playersData.length;
-
-  }
-
-
-
-  // FINISHED
 
   const finishedElement =
     $("#finished");
 
-
-  if (
-    finishedElement
-  ) {
-
-    finishedElement.textContent =
-
-      playersData
-        .filter(
-          player =>
-            player.completed
-        )
-        .length;
-
-  }
-
-
-
-  // GROUPS
-
   const groupsElement =
     $("#groups");
-
-
-  if (
-    groupsElement
-  ) {
-
-
-    const groups =
-      new Set(
-
-        playersData
-
-          .map(
-            player =>
-              player.group
-          )
-
-          .filter(
-            group =>
-              group > 0
-          )
-
-      );
-
-
-    groupsElement.textContent =
-      groups.size;
-
-  }
-
-
-
-  // HOLES COMPLETED
 
   const holesElement =
     $("#holes");
 
 
-  if (
-    holesElement
-  ) {
+  if (playersElement) {
 
-
-    const completedHoles =
-
-      playersData
-        .reduce(
-
-          (
-            total,
-            player
-          ) => {
-
-
-            return (
-
-              total +
-
-              Object
-                .keys(
-                  player.scores
-                )
-                .length
-
-            );
-
-          },
-
-          0
-
-        );
-
-
-    holesElement.textContent =
-      completedHoles;
-
+    playersElement.textContent =
+      playersData.length;
   }
 
+
+  if (finishedElement) {
+
+    finishedElement.textContent =
+      playersData.filter(
+        player => player.completed
+      ).length;
+  }
+
+
+  if (groupsElement) {
+
+    const groups =
+      new Set(
+        playersData
+          .map(
+            player => player.group
+          )
+          .filter(
+            group => group > 0
+          )
+      );
+
+
+    groupsElement.textContent =
+      groups.size;
+  }
+
+
+  if (holesElement) {
+
+    holesElement.textContent =
+      playersData.reduce(
+        (total, player) => {
+
+          return (
+            total +
+            Object.keys(
+              player.scores
+            ).length
+          );
+
+        },
+        0
+      );
+  }
 }
 
+
+// =============================================
+// RUN LABEL
+// =============================================
+
+function updateRunLabel() {
+
+  const label =
+    $("#currentRunLabel");
+
+
+  if (!label) {
+    return;
+  }
+
+
+  if (archiveMode) {
+
+    label.textContent =
+      `ARCHIV · RUN ${String(displayedRun).padStart(2, "0")}`;
+  }
+
+  else {
+
+    label.textContent =
+      `RUN ${String(currentRun).padStart(2, "0")}`;
+  }
+}
 
 
 // =============================================
@@ -636,192 +410,100 @@ function updateStatistics() {
 
 function renderTable() {
 
-
-  const searchInput =
-    $("#search");
-
-
   const search =
-    searchInput
-      ? searchInput
-          .value
-          .trim()
-          .toLowerCase()
-      : "";
-
-
-
-  // =============================================
-  // FILTER
-  // =============================================
+    $("#search")
+      ?.value
+      ?.trim()
+      ?.toLowerCase() || "";
 
 
   let filtered =
-    playersData
-      .filter(
-        player => {
+    playersData.filter(
+      player => {
 
 
-          let matchesFilter =
-            true;
+        let filterMatches = true;
 
 
+        // FINISHED
 
-          // FINISHED
+        if (
+          activeFilter === "finished"
+        ) {
 
-          if (
-            activeFilter ===
-            "finished"
-          ) {
-
-            matchesFilter =
-              player.completed;
-
-          }
-
-
-
-          // GROUP FILTER
-
-          else if (
-            activeFilter !==
-            "all"
-          ) {
-
-            matchesFilter =
-
-              String(
-                player.group
-              ) ===
-              activeFilter;
-
-          }
-
-
-
-          // SEARCH
-
-          const matchesSearch =
-
-            !search ||
-
-            player
-              .name
-              .toLowerCase()
-              .includes(
-                search
-              );
-
-
-
-          return (
-
-            matchesFilter &&
-
-            matchesSearch
-
-          );
-
+          filterMatches =
+            player.completed;
         }
-      );
 
+
+        // GROUP FILTER
+
+        else if (
+          activeFilter !== "all"
+        ) {
+
+          filterMatches =
+            String(
+              player.group
+            ) === activeFilter;
+        }
+
+
+        // SEARCH
+
+        const searchMatches =
+          !search ||
+          player.name
+            .toLowerCase()
+            .includes(search);
+
+
+        return (
+          filterMatches &&
+          searchMatches
+        );
+      }
+    );
 
 
   // =============================================
-  // SORT
+  // SORTIERUNG
   // =============================================
-
 
   filtered.sort(
-    (
-      playerA,
-      playerB
-    ) => {
-
-
-      // Finished first
+    (a, b) => {
 
       if (
-        playerA.completed !==
-        playerB.completed
+        a.group !== b.group
       ) {
 
         return (
-
-          Number(
-            playerB.completed
-          ) -
-
-          Number(
-            playerA.completed
-          )
-
+          a.group -
+          b.group
         );
-
       }
 
 
-
-      // Group
-
-      if (
-        playerA.group !==
-        playerB.group
-      ) {
-
-        return (
-
-          playerA.group -
-
-          playerB.group
-
-        );
-
-      }
-
-
-
-      // Name
-
-      return (
-
-        playerA
-          .name
-          .localeCompare(
-            playerB.name,
-            "de"
-          )
-
+      return a.name.localeCompare(
+        b.name,
+        "de"
       );
-
     }
   );
-
-
-
-  // =============================================
-  // TABLE BODY
-  // =============================================
 
 
   const rows =
     $("#rows");
 
 
-  if (
-    !rows
-  ) {
-
+  if (!rows) {
     return;
-
   }
-
 
 
   if (
     filtered.length === 0
   ) {
-
 
     rows.innerHTML = `
 
@@ -829,8 +511,7 @@ function renderTable() {
 
         <td colspan="14">
 
-          Keine Spieler
-          in diesem Durchgang gefunden.
+          Keine Spieler in diesem Durchgang gefunden.
 
         </td>
 
@@ -838,176 +519,107 @@ function renderTable() {
 
     `;
 
-
     return;
-
   }
 
 
+  // =============================================
+  // TABLE HTML
+  // =============================================
 
   rows.innerHTML =
-
     filtered
-
       .map(
         player => {
 
 
-          // H1 - H9
-
           const values =
-
             Array.from(
-
               {
                 length: 9
               },
-
-              (
-                _,
-                index
-              ) => {
-
+              (_, index) => {
 
                 return (
-
-                  player
-                    .scores[
-                      index + 1
-                    ]
-
-                  ?? "–"
-
+                  player.scores[
+                    index + 1
+                  ] ?? "–"
                 );
-
               }
-
             );
 
 
+          const progress =
+            values.filter(
+              value =>
+                value !== "–"
+            ).length;
 
-          // COMPLETED HOLES
-
-          const completedHoles =
-
-            values
-              .filter(
-                value =>
-                  value !== "–"
-              )
-              .length;
-
-
-
-          // TOTAL
 
           const total =
+            values.reduce(
+              (sum, value) => {
 
-            values
-              .reduce(
+                if (
+                  value === "–"
+                ) {
 
-                (
-                  sum,
-                  value
-                ) => {
-
-
-                  if (
-                    value === "–"
-                  ) {
-
-                    return sum;
-
-                  }
+                  return sum;
+                }
 
 
-                  return (
+                return (
+                  sum +
+                  Number(value)
+                );
 
-                    sum +
+              },
+              0
+            );
 
-                    Number(
-                      value
-                    )
-
-                  );
-
-                },
-
-                0
-
-              );
-
-
-
-          // STATUS
 
           const status =
-
             player.completed
               ? "FINISHED"
               : "PLAYING";
 
 
-
-          // ROW
-
           return `
 
             <tr>
 
-
               <td>
-
                 ${escapeHtml(
                   player.name
                 )}
-
               </td>
-
 
               <td class="orange">
-
                 G${player.group}
-
               </td>
-
 
               <td class="${
                 player.completed
                   ? "orange"
                   : ""
               }">
-
                 ${status}
-
               </td>
-
 
               <td>
-
-                ${completedHoles}/9
-
+                ${progress}/9
               </td>
-
 
               ${values
                 .map(
                   value =>
-
-                    `<td>
-                      ${value}
-                    </td>`
-
+                    `<td>${value}</td>`
                 )
                 .join("")}
 
-
               <td class="orange">
-
                 ${total}
-
               </td>
-
 
             </tr>
 
@@ -1015,132 +627,382 @@ function renderTable() {
 
         }
       )
-
       .join("");
-
 }
 
+
+// =============================================
+// ARCHIVE CURRENT RUN
+// =============================================
+
+async function archiveCurrentRun() {
+
+  if (archiveMode) {
+
+    alert(
+      "Du befindest dich gerade im Archiv."
+    );
+
+    return;
+  }
+
+
+  const confirmed =
+    confirm(
+
+      `RUN ${String(currentRun).padStart(2, "0")} wirklich archivieren?\n\n` +
+
+      `Die Spieler und Ergebnisse werden NICHT gelöscht.\n\n` +
+
+      `Danach startet automatisch RUN ${String(currentRun + 1).padStart(2, "0")}.`
+
+    );
+
+
+  if (!confirmed) {
+    return;
+  }
+
+
+  const oldRun =
+    currentRun;
+
+
+  const nextRun =
+    currentRun + 1;
+
+
+  // =============================================
+  // EVENT STATE UPDATE
+  // =============================================
+
+  const {
+    error
+  } = await sb
+    .from("event_state")
+    .update({
+
+      current_run:
+        nextRun,
+
+      updated_at:
+        new Date()
+          .toISOString()
+
+    })
+    .eq(
+      "event_id",
+      eventId
+    );
+
+
+  if (error) {
+
+    alert(
+      "Durchgang konnte nicht archiviert werden:\n" +
+      error.message
+    );
+
+    return;
+  }
+
+
+  currentRun =
+    nextRun;
+
+  displayedRun =
+    currentRun;
+
+  archiveMode =
+    false;
+
+
+  resetFilters();
+
+  updateArchiveButton();
+
+  updateRunLabel();
+
+
+  await loadDashboard();
+
+
+  alert(
+    `RUN ${String(oldRun).padStart(2, "0")} wurde archiviert.\n\n` +
+    `RUN ${String(currentRun).padStart(2, "0")} ist jetzt aktiv.`
+  );
+}
+
+
+// =============================================
+// OPEN / CLOSE ARCHIVE
+// =============================================
+
+async function toggleArchive() {
+
+  // =============================================
+  // CLOSE ARCHIVE
+  // =============================================
+
+  if (archiveMode) {
+
+    archiveMode =
+      false;
+
+    displayedRun =
+      currentRun;
+
+
+    resetFilters();
+
+    updateArchiveButton();
+
+    updateRunLabel();
+
+
+    await loadDashboard();
+
+    return;
+  }
+
+
+  // =============================================
+  // NO ARCHIVE YET
+  // =============================================
+
+  if (
+    currentRun <= 1
+  ) {
+
+    alert(
+      "Es gibt noch keinen archivierten Durchgang."
+    );
+
+    return;
+  }
+
+
+  // =============================================
+  // OPEN LATEST ARCHIVED RUN
+  // =============================================
+
+  archiveMode =
+    true;
+
+  displayedRun =
+    currentRun - 1;
+
+
+  resetFilters();
+
+  updateArchiveButton();
+
+  updateRunLabel();
+
+
+  await loadDashboard();
+}
+
+
+// =============================================
+// ARCHIVE BUTTON
+// =============================================
+
+function updateArchiveButton() {
+
+  const button =
+    $("#archiveToggle");
+
+
+  if (!button) {
+    return;
+  }
+
+
+  if (archiveMode) {
+
+    button.textContent =
+      "← ZURÜCK ZUM LIVE RUN";
+
+    button.classList.add(
+      "archiveMode"
+    );
+  }
+
+  else {
+
+    button.textContent =
+      "ARCHIV →";
+
+    button.classList.remove(
+      "archiveMode"
+    );
+  }
+}
+
+
+// =============================================
+// RESET FILTERS
+// =============================================
+
+function resetFilters() {
+
+  activeFilter =
+    "all";
+
+
+  const search =
+    $("#search");
+
+
+  if (search) {
+
+    search.value =
+      "";
+  }
+
+
+  document
+    .querySelectorAll(
+      "[data-g]"
+    )
+    .forEach(
+      button => {
+
+        button.classList.remove(
+          "active"
+        );
+
+      }
+    );
+
+
+  document
+    .querySelector(
+      '[data-g="all"]'
+    )
+    ?.classList
+    .add(
+      "active"
+    );
+}
 
 
 // =============================================
 // ESCAPE HTML
 // =============================================
 
-function escapeHtml(
-  value
-) {
+function escapeHtml(value) {
 
+  return String(value)
+    .replace(
+      /[&<>"']/g,
+      character => ({
 
-  return String(
-    value
-  )
-  .replace(
+        "&": "&amp;",
 
-    /[&<>"']/g,
+        "<": "&lt;",
 
-    character => ({
+        ">": "&gt;",
 
-      "&":
-        "&amp;",
+        '"': "&quot;",
 
-      "<":
-        "&lt;",
+        "'": "&#39;"
 
-      ">":
-        "&gt;",
-
-      '"':
-        "&quot;",
-
-      "'":
-        "&#39;"
-
-    })[
-      character
-    ]
-
-  );
-
+      })[character]
+    );
 }
-
 
 
 // =============================================
 // STATUS MESSAGE
 // =============================================
 
-function showMessage(
-  text
-) {
+function showMessage(text) {
 
-
-  const element =
+  const message =
     $("#dashMsg");
 
 
-  if (
-    element
-  ) {
+  if (message) {
 
-    element.textContent =
+    message.textContent =
       text;
-
   }
-
 }
 
 
+// =============================================
+// ARCHIVE BUTTON
+// =============================================
+
+const archiveRunButton =
+  $("#archiveRun");
+
+
+if (archiveRunButton) {
+
+  archiveRunButton.addEventListener(
+    "click",
+    archiveCurrentRun
+  );
+}
+
 
 // =============================================
-// MANUAL REFRESH
+// ARCHIVE VIEW BUTTON
 // =============================================
 
+const archiveToggleButton =
+  $("#archiveToggle");
+
+
+if (archiveToggleButton) {
+
+  archiveToggleButton.addEventListener(
+    "click",
+    toggleArchive
+  );
+}
+
+
+// =============================================
+// REFRESH
+// =============================================
 
 const refreshButton =
   $("#refresh");
 
 
-if (
-  refreshButton
-) {
+if (refreshButton) {
 
-  refreshButton
-    .addEventListener(
-      "click",
-      loadDashboard
-    );
-
+  refreshButton.addEventListener(
+    "click",
+    loadDashboard
+  );
 }
-
 
 
 // =============================================
 // SEARCH
 // =============================================
 
-
 const searchInput =
   $("#search");
 
 
-if (
-  searchInput
-) {
+if (searchInput) {
 
-  searchInput
-    .addEventListener(
-      "input",
-      renderTable
-    );
-
+  searchInput.addEventListener(
+    "input",
+    renderTable
+  );
 }
 
 
-
 // =============================================
-// FILTER BUTTONS
+// FILTERS
 // =============================================
-
 
 document
   .querySelectorAll(
@@ -1149,83 +1011,59 @@ document
   .forEach(
     button => {
 
-
-      button
-        .addEventListener(
-          "click",
-          () => {
+      button.addEventListener(
+        "click",
+        () => {
 
 
-            document
-              .querySelectorAll(
-                "[data-g]"
-              )
-              .forEach(
-                otherButton => {
+          document
+            .querySelectorAll(
+              "[data-g]"
+            )
+            .forEach(
+              otherButton => {
+
+                otherButton.classList.remove(
+                  "active"
+                );
+              }
+            );
 
 
-                  otherButton
-                    .classList
-                    .remove(
-                      "active"
-                    );
-
-                }
-              );
+          button.classList.add(
+            "active"
+          );
 
 
-            button
-              .classList
-              .add(
-                "active"
-              );
+          activeFilter =
+            button.dataset.g;
 
 
-            activeFilter =
-              button.dataset.g;
+          renderTable();
 
-
-            renderTable();
-
-          }
-        );
-
+        }
+      );
     }
   );
 
 
-
 // =============================================
-// START
+// START DASHBOARD
 // =============================================
 
-
-// First load all available events.
-// loadEvents() then automatically loads
-// the newest event.
-
-loadEvents();
-
+initDashboard();
 
 
 // =============================================
 // AUTO REFRESH
 // =============================================
 
-
-// Every 15 seconds only reload
-// the currently selected event.
-
 setInterval(
   () => {
 
-
-    if (
-      selectedEventId
-    ) {
+    if (eventId) {
 
       loadDashboard();
-
     }
 
   },
