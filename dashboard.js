@@ -5,7 +5,7 @@ const sb = supabase.createClient(
 
 const $ = selector => document.querySelector(selector);
 
-let playersData = [];
+let selectedEventId = null; let playersData = [];
 
 let activeFilter = "all";
 
