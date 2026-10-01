@@ -9,7 +9,114 @@ let selectedEventId = null; let playersData = [];
 
 let activeFilter = "all";
 
+async function loadEvents() {
 
+  const {
+    data: events,
+    error
+  } = await sb
+    .from("events")
+    .select(`
+      id,
+      name,
+      city,
+      event_date,
+      created_at
+    `)
+    .order(
+      "created_at",
+      {
+        ascending: false
+      }
+    );
+
+
+  if (
+    error
+  ) {
+
+    showMessage(
+      "Events konnten nicht geladen werden."
+    );
+
+    return;
+
+  }
+
+
+  const select =
+    $("#eventSelect");
+
+
+  select.innerHTML =
+
+    events.map(
+      event => {
+
+        const date =
+          event.event_date
+            ? new Date(
+                event.event_date
+              )
+              .toLocaleDateString(
+                "de-DE"
+              )
+            : "ohne Datum";
+
+
+        return `
+
+          <option
+            value="${event.id}"
+          >
+
+            ${escapeHtml(
+              event.name
+            )}
+
+            · ${date}
+
+          </option>
+
+        `;
+
+      }
+    )
+    .join("");
+
+
+  if (
+    events.length > 0
+  ) {
+
+    selectedEventId =
+      events[0].id;
+
+
+    select.value =
+      selectedEventId;
+
+  }
+
+
+  select
+    .addEventListener(
+      "change",
+      () => {
+
+        selectedEventId =
+          select.value;
+
+
+        loadDashboard();
+
+      }
+    );
+
+
+  loadDashboard();
+
+}
 // ============================================
 // LOAD DASHBOARD
 // ============================================
