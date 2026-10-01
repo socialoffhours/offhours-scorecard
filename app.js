@@ -33,7 +33,7 @@ let sips = 1;
 let saved = {};
 
 let roundFinished = false;
-
+let currentRun = 1;
 
 const $ =
   selector =>
