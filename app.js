@@ -120,7 +120,32 @@ async function init() {
 
   eventId =
     event.id;
+// =============================================
+// CURRENT RUN
+// =============================================
 
+const {
+  data: eventState,
+  error: stateError
+} = await sb
+  .from("event_state")
+  .select("current_run")
+  .eq(
+    "event_id",
+    eventId
+  )
+  .single();
+
+
+if (
+  !stateError &&
+  eventState
+) {
+
+  currentRun =
+    eventState.current_run;
+
+}
 
 
   // GROUP
