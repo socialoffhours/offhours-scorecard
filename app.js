@@ -1,100 +1,86 @@
+// =============================================
+// OFFHOURS SCORECARD
+// RUN + FINAL RESULTS VERSION
+// =============================================
+
 const sb = supabase.createClient(
   OFFHOURS_CONFIG.supabaseUrl,
   OFFHOURS_CONFIG.supabaseKey
 );
 
+const $ = selector => document.querySelector(selector);
 
-const q =
-  new URLSearchParams(
-    location.search
-  );
+const params = new URLSearchParams(
+  window.location.search
+);
 
-
-const groupNumber =
-  Number(
-    q.get("group")
-  );
+const groupNumber = Number(
+  params.get("group")
+);
 
 
-let eventId;
+// =============================================
+// STATE
+// =============================================
 
-let groupId;
+let eventId = null;
+let groupId = null;
 
 let route = [];
 
-let playerId;
-
+let playerId = null;
 let playerName = "";
 
 let current = 0;
-
 let sips = 1;
 
 let saved = {};
 
 let roundFinished = false;
+
 let currentRun = 1;
 
-const $ =
-  selector =>
-    document.querySelector(
-      selector
-    );
-
-
 
 // =============================================
-// GROUP VALIDATION
+// GROUP CHECK
 // =============================================
-
 
 if (
-  !Number.isInteger(
-    groupNumber
-  ) ||
-
+  !Number.isInteger(groupNumber) ||
   groupNumber < 1 ||
-
   groupNumber > 5
 ) {
 
   $("#error").textContent =
-    "Ungültiger Gruppenlink. Bitte QR-Code eurer Gruppe scannen.";
+    "Ungültiger Gruppenlink. Bitte scannt den QR-Code eurer Gruppe.";
 
-
-  $("#joinForm button")
-    .disabled = true;
+  $("#joinForm button").disabled =
+    true;
 
 }
 
 else {
 
-  $("#groupBadge")
-    .textContent =
-      `GROUP 0${groupNumber}`;
+  $("#groupBadge").textContent =
+    `GROUP ${String(groupNumber).padStart(2, "0")}`;
 
 }
-
 
 
 // =============================================
 // INITIALIZE
 // =============================================
 
-
 async function init() {
 
-
   if (!groupNumber) {
-
     return;
-
   }
 
 
-
+  // -------------------------------------------
   // EVENT
-
+  // -------------------------------------------
 
   const {
     data: event,
@@ -109,47 +95,62 @@ async function init() {
     .single();
 
 
-  if (eventError) {
+  if (
+    eventError ||
+    !event
+  ) {
 
-    return showError(
+    showError(
       "Event konnte nicht geladen werden."
     );
+
+    return;
 
   }
 
 
   eventId =
     event.id;
-// =============================================
-// CURRENT RUN
-// =============================================
-
-const {
-  data: eventState,
-  error: stateError
-} = await sb
-  .from("event_state")
-  .select("current_run")
-  .eq(
-    "event_id",
-    eventId
-  )
-  .single();
 
 
-if (
-  !stateError &&
-  eventState
-) {
+  // -------------------------------------------
+  // CURRENT RUN
+  // -------------------------------------------
+
+  const {
+    data: eventState,
+    error: stateError
+  } = await sb
+    .from("event_state")
+    .select("current_run")
+    .eq(
+      "event_id",
+      eventId
+    )
+    .single();
+
+
+  if (
+    stateError ||
+    !eventState
+  ) {
+
+    showError(
+      "Der aktuelle Durchgang konnte nicht geladen werden."
+    );
+
+    return;
+
+  }
+
 
   currentRun =
     eventState.current_run;
 
-}
 
-
+  // -------------------------------------------
   // GROUP
-
+  // -------------------------------------------
 
   const {
     data: group,
@@ -168,11 +169,16 @@ if (
     .single();
 
 
-  if (groupError) {
+  if (
+    groupError ||
+    !group
+  ) {
 
-    return showError(
+    showError(
       "Gruppe konnte nicht geladen werden."
     );
+
+    return;
 
   }
 
@@ -181,9 +187,9 @@ if (
     group.id;
 
 
-
+  // -------------------------------------------
   // ROUTE
-
+  // -------------------------------------------
 
   const {
     data: routeData,
@@ -210,12 +216,15 @@ if (
 
   if (
     routeError ||
-    !routeData
+    !routeData ||
+    routeData.length === 0
   ) {
 
-    return showError(
+    showError(
       "Route konnte nicht geladen werden."
     );
+
+    return;
 
   }
 
@@ -224,12 +233,19 @@ if (
     routeData;
 
 
-
-  // LOCAL PLAYER SESSION
-
+  // -------------------------------------------
+  // LOCAL SESSION
+  //
+  // WICHTIG:
+  // Der Run ist Teil des Schlüssels.
+  //
+  // Dadurch bekommt derselbe Browser nach
+  // einem Archivieren automatisch eine neue
+  // Scorecard.
+  // -------------------------------------------
 
   const storageKey =
-    `oh_g${groupNumber}`;
+    getStorageKey();
 
 
   const localData =
@@ -241,20 +257,20 @@ if (
 
 
   if (
-    localData?.pid
+    localData?.playerId
   ) {
 
     playerId =
-      localData.pid;
+      localData.playerId;
 
     playerName =
-      localData.pname;
+      localData.playerName || "";
 
     saved =
       localData.saved || {};
 
     current =
-      localData.cur || 0;
+      localData.current || 0;
 
     roundFinished =
       localData.roundFinished === true;
@@ -279,52 +295,47 @@ if (
 }
 
 
-
-init();
-
-
-
 // =============================================
-// ERROR
+// STORAGE KEY
 // =============================================
 
+function getStorageKey() {
 
-function showError(
-  text
-) {
-
-  $("#error")
-    .textContent =
-      text;
+  return (
+    `offhours_` +
+    `run_${currentRun}_` +
+    `group_${groupNumber}`
+  );
 
 }
 
 
-
 // =============================================
-// SAVE LOCAL SESSION
+// LOCAL SAVE
 // =============================================
-
 
 function persist() {
 
   localStorage.setItem(
 
-    `oh_g${groupNumber}`,
+    getStorageKey(),
 
     JSON.stringify({
 
-      pid:
+      playerId:
         playerId,
 
-      pname:
+      playerName:
         playerName,
+
+      currentRun:
+        currentRun,
+
+      current:
+        current,
 
       saved:
         saved,
-
-      cur:
-        current,
 
       roundFinished:
         roundFinished
@@ -336,16 +347,12 @@ function persist() {
 }
 
 
-
 // =============================================
 // PLAYER REGISTRATION
 // =============================================
 
-
-$("#joinForm")
-  .onsubmit =
+$("#joinForm").onsubmit =
   async event => {
-
 
     event.preventDefault();
 
@@ -356,14 +363,12 @@ $("#joinForm")
         .trim();
 
 
-    if (
-      !playerName
-    ) {
-
+    if (!playerName) {
       return;
-
     }
 
+
+    // Neue eindeutige Player-ID
 
     playerId =
       crypto.randomUUID();
@@ -373,54 +378,53 @@ $("#joinForm")
       error
     } = await sb
       .from("players")
-.insert({
+      .insert({
 
-  id:
-    playerId,
+        id:
+          playerId,
 
-  event_id:
-    eventId,
+        event_id:
+          eventId,
 
-  group_id:
-    groupId,
+        group_id:
+          groupId,
 
-  name:
-    playerName,
+        name:
+          playerName,
 
-  run_number:
-    currentRun
+        run_number:
+          currentRun,
 
-});
+        completed:
+          false
+
+      });
 
 
-    if (
-      error
-    ) {
+    if (error) {
 
-      return showError(
+      showError(
         "Anmeldung fehlgeschlagen: " +
         error.message
       );
+
+      return;
 
     }
 
 
     persist();
 
-
     showScorecard();
 
   };
 
 
-
 // =============================================
-// SCORECARD
+// SHOW SCORECARD
 // =============================================
-
 
 function showScorecard() {
-
 
   if (
     roundFinished
@@ -435,23 +439,17 @@ function showScorecard() {
 
   $("#join")
     .classList
-    .add(
-      "hidden"
-    );
+    .add("hidden");
 
 
   $("#finish")
     .classList
-    .add(
-      "hidden"
-    );
+    .add("hidden");
 
 
   $("#score")
     .classList
-    .remove(
-      "hidden"
-    );
+    .remove("hidden");
 
 
   $("#player")
@@ -464,14 +462,11 @@ function showScorecard() {
 }
 
 
-
 // =============================================
-// RENDER HOLE
+// RENDER CURRENT HOLE
 // =============================================
-
 
 function renderHole() {
-
 
   if (
     roundFinished
@@ -492,103 +487,76 @@ function renderHole() {
     stop.hole;
 
 
-  $("#num")
-    .textContent =
-      String(
-        current + 1
-      )
-      .padStart(
-        2,
-        "0"
-      );
+  $("#num").textContent =
+    String(
+      current + 1
+    ).padStart(
+      2,
+      "0"
+    );
 
 
-  $("#par")
-    .textContent =
-      `PAR ${hole.par}`;
+  $("#par").textContent =
+    `PAR ${hole.par}`;
 
 
-  $("#barName")
-    .textContent =
-      hole.bar_name;
+  $("#barName").textContent =
+    hole.bar_name;
 
 
-  $("#drink")
-    .textContent =
-      hole.drink;
+  $("#drink").textContent =
+    hole.drink;
 
 
-  $("#progressText")
-    .textContent =
-      `${current + 1} / 9`;
+  $("#progressText").textContent =
+    `${current + 1} / 9`;
 
 
-  $("#bar")
-    .style
-    .width =
-      `${(
-        (current + 1) /
-        9
-      ) * 100}%`;
+  $("#bar").style.width =
+    `${
+      ((current + 1) / 9) * 100
+    }%`;
 
 
   sips =
-    saved[
-      stop.id
-    ] ?? 1;
+    saved[stop.id] ?? 1;
 
 
-  $("#value")
-    .textContent =
-      sips;
+  $("#value").textContent =
+    sips;
 
 
-  $("#prev")
-    .style
-    .visibility =
-      current > 0
-        ? "visible"
-        : "hidden";
+  $("#prev").style.visibility =
+    current > 0
+      ? "visible"
+      : "hidden";
 
 
-  $("#next")
-    .style
-    .visibility =
-      current < 8
-        ? "visible"
-        : "hidden";
+  $("#next").style.visibility =
+    current < 8
+      ? "visible"
+      : "hidden";
 
 
-  $("#msg")
-    .textContent =
-
-      saved[
-        stop.id
-      ] !== undefined
-
-        ? "✓ GESPEICHERT"
-
-        : "";
+  $("#msg").textContent =
+    saved[stop.id] !== undefined
+      ? "✓ GESPEICHERT"
+      : "";
 
 }
-
 
 
 // =============================================
 // COUNTER
 // =============================================
 
-
-$("#minus")
-  .onclick =
+$("#minus").onclick =
   () => {
 
     if (
       roundFinished
     ) {
-
       return;
-
     }
 
 
@@ -599,24 +567,19 @@ $("#minus")
       );
 
 
-    $("#value")
-      .textContent =
-        sips;
+    $("#value").textContent =
+      sips;
 
   };
 
 
-
-$("#plus")
-  .onclick =
+$("#plus").onclick =
   () => {
 
     if (
       roundFinished
     ) {
-
       return;
-
     }
 
 
@@ -627,93 +590,67 @@ $("#plus")
       );
 
 
-    $("#value")
-      .textContent =
-        sips;
+    $("#value").textContent =
+      sips;
 
   };
-
 
 
 // =============================================
-// NAVIGATION
+// PREVIOUS / NEXT
 // =============================================
 
-
-$("#prev")
-  .onclick =
+$("#prev").onclick =
   () => {
 
     if (
-      roundFinished
+      roundFinished ||
+      current <= 0
     ) {
-
       return;
-
     }
 
 
-    if (
-      current > 0
-    ) {
+    current--;
 
-      current--;
+    persist();
 
-      persist();
-
-      renderHole();
-
-    }
+    renderHole();
 
   };
 
 
-
-$("#next")
-  .onclick =
+$("#next").onclick =
   () => {
 
     if (
-      roundFinished
+      roundFinished ||
+      current >= 8
     ) {
-
       return;
-
     }
 
 
-    if (
-      current < 8
-    ) {
+    current++;
 
-      current++;
+    persist();
 
-      persist();
-
-      renderHole();
-
-    }
+    renderHole();
 
   };
-
 
 
 // =============================================
 // SAVE SCORE
 // =============================================
 
-
-$("#save")
-  .onclick =
+$("#save").onclick =
   async () => {
-
 
     if (
       roundFinished
     ) {
-
       return;
-
     }
 
 
@@ -726,6 +663,7 @@ $("#save")
     } = await sb
       .from("scores")
       .upsert(
+
         {
 
           player_id:
@@ -757,29 +695,24 @@ $("#save")
       );
 
 
-    if (
-      error
-    ) {
+    if (error) {
 
-      $("#msg")
-        .textContent =
-          "Fehler: " +
-          error.message;
+      $("#msg").textContent =
+        "Fehler: " +
+        error.message;
 
       return;
 
     }
 
 
-    saved[
-      stop.id
-    ] =
+    saved[stop.id] =
       sips;
 
 
-
+    // -----------------------------------------
     // LAST HOLE
-
+    // -----------------------------------------
 
     if (
       current === 8
@@ -792,32 +725,26 @@ $("#save")
     }
 
 
-
     current++;
 
-
     persist();
-
 
     renderHole();
 
   };
 
 
-
 // =============================================
 // FINISH ROUND
 // =============================================
 
-
 async function finishRound() {
 
+  // Erst Spieler in Supabase abschließen
 
-  roundFinished =
-    true;
-
-
-  await sb
+  const {
+    error
+  } = await sb
     .from("players")
     .update({
 
@@ -831,6 +758,21 @@ async function finishRound() {
     );
 
 
+  if (error) {
+
+    $("#msg").textContent =
+      "Runde konnte nicht abgeschlossen werden: " +
+      error.message;
+
+    return;
+
+  }
+
+
+  roundFinished =
+    true;
+
+
   persist();
 
 
@@ -839,153 +781,156 @@ async function finishRound() {
 }
 
 
-
 // =============================================
 // FINAL RESULTS
 // =============================================
 
-
 function showFinalResults() {
-
 
   $("#join")
     .classList
-    .add(
-      "hidden"
-    );
+    .add("hidden");
 
 
   $("#score")
     .classList
-    .add(
-      "hidden"
-    );
+    .add("hidden");
 
 
   $("#finish")
     .classList
-    .remove(
-      "hidden"
-    );
+    .remove("hidden");
 
 
-  $("#finishName")
-    .textContent =
-      playerName.toUpperCase();
+  $("#finishName").textContent =
+    playerName.toUpperCase();
 
 
+  // -------------------------------------------
+  // TOTAL
+  // -------------------------------------------
 
   const total =
     Object
-      .values(
-        saved
-      )
+      .values(saved)
       .reduce(
         (
           sum,
           value
-        ) =>
-          sum +
-          Number(value),
+        ) => {
+
+          return (
+            sum +
+            Number(value)
+          );
+
+        },
         0
       );
 
 
-  $("#total")
-    .textContent =
-      total;
+  $("#total").textContent =
+    total;
 
 
+  // -------------------------------------------
+  // FINAL SCORECARD
+  // -------------------------------------------
 
-  // BUILD FINAL SCORECARD
-
-
-  $("#finalResults")
-    .innerHTML =
-
-      route
-        .map(
-          (
-            stop,
-            index
-          ) => {
+  const finalResults =
+    $("#finalResults");
 
 
-            const hole =
-              stop.hole;
+  if (
+    !finalResults
+  ) {
+
+    return;
+
+  }
 
 
-            const score =
-              saved[
-                stop.id
-              ] ?? "–";
+  finalResults.innerHTML =
+
+    route
+      .map(
+        (
+          stop,
+          index
+        ) => {
 
 
-            return `
+          const hole =
+            stop.hole;
 
-              <div
-                class="finalResultRow"
+
+          const score =
+            saved[stop.id] ?? "–";
+
+
+          return `
+
+            <div
+              class="finalResultRow"
+            >
+
+              <span
+                class="finalHole"
               >
-
-                <span
-                  class="finalHole"
-                >
-                  ${String(
-                    index + 1
-                  ).padStart(
-                    2,
-                    "0"
-                  )}
-                </span>
+                ${String(
+                  index + 1
+                ).padStart(
+                  2,
+                  "0"
+                )}
+              </span>
 
 
-                <strong
-                  class="finalBar"
-                >
-                  ${escapeHtml(
-                    hole.bar_name
-                  )}
-                </strong>
+              <strong
+                class="finalBar"
+              >
+                ${escapeHtml(
+                  hole.bar_name
+                )}
+              </strong>
 
 
-                <span
-                  class="finalDrink"
-                >
-                  ${escapeHtml(
-                    hole.drink
-                  )}
-                </span>
+              <span
+                class="finalDrink"
+              >
+                ${escapeHtml(
+                  hole.drink
+                )}
+              </span>
 
 
-                <span
-                  class="finalPar"
-                >
-                  PAR ${hole.par}
-                </span>
+              <span
+                class="finalPar"
+              >
+                PAR ${hole.par}
+              </span>
 
 
-                <strong
-                  class="finalScore"
-                >
-                  ${score}
-                </strong>
+              <strong
+                class="finalScore"
+              >
+                ${score}
+              </strong>
 
-              </div>
+            </div>
 
-            `;
+          `;
 
-          }
-        )
-        .join("");
+        }
+      )
+      .join("");
 
 }
 
 
-
 // =============================================
-// SAFE TEXT
+// ESCAPE HTML
 // =============================================
-
 
 function escapeHtml(
   value
@@ -1020,3 +965,24 @@ function escapeHtml(
     );
 
 }
+
+
+// =============================================
+// ERROR
+// =============================================
+
+function showError(
+  text
+) {
+
+  $("#error").textContent =
+    text;
+
+}
+
+
+// =============================================
+// START APP
+// =============================================
+
+init();
