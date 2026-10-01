@@ -1,15 +1,46 @@
+// =============================================
+// OFFHOURS CONTROL ROOM
+// dashboard.js
+// =============================================
+
+
+// SUPABASE CLIENT
+
 const sb = supabase.createClient(
   OFFHOURS_CONFIG.supabaseUrl,
   OFFHOURS_CONFIG.supabaseKey
 );
 
-const $ = selector => document.querySelector(selector);
 
-let selectedEventId = null; let playersData = [];
+// SHORT SELECTOR
+
+const $ = selector =>
+  document.querySelector(selector);
+
+
+// =============================================
+// GLOBAL STATE
+// =============================================
+
+let playersData = [];
 
 let activeFilter = "all";
 
+let selectedEventId = null;
+
+let eventsData = [];
+
+
+// =============================================
+// LOAD EVENTS / DURCHGÄNGE
+// =============================================
+
 async function loadEvents() {
+
+  showMessage(
+    "Lade Durchgänge..."
+  );
+
 
   const {
     data: events,
@@ -31,37 +62,86 @@ async function loadEvents() {
     );
 
 
-  if (
-    error
-  ) {
+  if (error) {
 
     showMessage(
-      "Events konnten nicht geladen werden."
+      "Events konnten nicht geladen werden: " +
+      error.message
     );
 
     return;
-
   }
+
+
+  eventsData =
+    events || [];
 
 
   const select =
     $("#eventSelect");
 
 
+  if (!select) {
+
+    showMessage(
+      "Event-Auswahl wurde in dashboard.html nicht gefunden."
+    );
+
+    return;
+  }
+
+
+  // Keine Events vorhanden
+
+  if (
+    eventsData.length === 0
+  ) {
+
+    select.innerHTML = `
+      <option>
+        Keine Events vorhanden
+      </option>
+    `;
+
+
+    showMessage(
+      "Keine OFFHOURS Events gefunden."
+    );
+
+
+    return;
+  }
+
+
+  // Dropdown aufbauen
+
   select.innerHTML =
 
-    events.map(
-      event => {
+    eventsData
+      .map(event => {
 
-        const date =
+
+        let dateText =
+          "ohne Datum";
+
+
+        if (
           event.event_date
-            ? new Date(
-                event.event_date
-              )
-              .toLocaleDateString(
-                "de-DE"
-              )
-            : "ohne Datum";
+        ) {
+
+          const date =
+            new Date(
+              event.event_date +
+              "T12:00:00"
+            );
+
+
+          dateText =
+            date.toLocaleDateString(
+              "de-DE"
+            );
+
+        }
 
 
         return `
@@ -74,89 +154,125 @@ async function loadEvents() {
               event.name
             )}
 
-            · ${date}
+            · ${dateText}
 
           </option>
 
         `;
 
+      })
+      .join("");
+
+
+  // Standard:
+  // neuester Durchgang
+
+  selectedEventId =
+    eventsData[0].id;
+
+
+  select.value =
+    selectedEventId;
+
+
+  // Bei Auswahl wechseln
+
+  select.addEventListener(
+    "change",
+    () => {
+
+
+      selectedEventId =
+        select.value;
+
+
+      // Suche zurücksetzen
+
+      const search =
+        $("#search");
+
+
+      if (search) {
+
+        search.value = "";
+
       }
-    )
-    .join("");
 
 
-  if (
-    events.length > 0
-  ) {
+      // Filter zurücksetzen
 
-    selectedEventId =
-      events[0].id;
+      activeFilter =
+        "all";
 
 
-    select.value =
-      selectedEventId;
+      document
+        .querySelectorAll(
+          "[data-g]"
+        )
+        .forEach(button => {
 
-  }
+          button.classList.remove(
+            "active"
+          );
 
-
-  select
-    .addEventListener(
-      "change",
-      () => {
-
-        selectedEventId =
-          select.value;
+        });
 
 
-        loadDashboard();
+      const allButton =
+        document.querySelector(
+          '[data-g="all"]'
+        );
+
+
+      if (allButton) {
+
+        allButton.classList.add(
+          "active"
+        );
 
       }
-    );
 
 
-  loadDashboard();
+      loadDashboard();
+
+    }
+  );
+
+
+  // Erstes Event laden
+
+  await loadDashboard();
 
 }
-// ============================================
+
+
+
+// =============================================
 // LOAD DASHBOARD
-// ============================================
+// =============================================
 
 async function loadDashboard() {
 
-  $("#dashMsg").textContent =
-    "Lade OFFHOURS Daten...";
 
-
-  // EVENT LADEN
-
-  const {
-    data: event,
-    error: eventError
-  } = await sb
-    .from("events")
-    .select("id")
-    .eq(
-      "name",
-      OFFHOURS_CONFIG.eventName
-    )
-    .single();
-
-
-  if (eventError) {
-
-    showMessage(
-      "Event konnte nicht geladen werden: " +
-      eventError.message
-    );
+  if (
+    !selectedEventId
+  ) {
 
     return;
+
   }
 
 
+  showMessage(
+    "Lade OFFHOURS Daten..."
+  );
 
-  // ============================================
-  // PLAYERS LADEN
-  // ============================================
+
+
+  // =============================================
+  // PLAYERS
+  // =============================================
+
 
   const {
     data: players,
@@ -174,14 +290,19 @@ async function loadDashboard() {
     `)
     .eq(
       "event_id",
-      event.id
+      selectedEventId
     )
     .order(
-      "created_at"
+      "created_at",
+      {
+        ascending: true
+      }
     );
 
 
-  if (playersError) {
+  if (
+    playersError
+  ) {
 
     showMessage(
       "Spieler konnten nicht geladen werden: " +
@@ -193,20 +314,32 @@ async function loadDashboard() {
 
 
 
-  // ============================================
-  // SCORES LADEN
-  // ============================================
+  // =============================================
+  // PLAYER IDS
+  // =============================================
+
 
   const playerIds =
-    (players || []).map(
-      player => player.id
-    );
+    (players || [])
+      .map(
+        player =>
+          player.id
+      );
+
+
+
+  // =============================================
+  // SCORES
+  // =============================================
 
 
   let scores = [];
 
 
-  if (playerIds.length > 0) {
+  if (
+    playerIds.length > 0
+  ) {
+
 
     const {
       data: scoreData,
@@ -226,7 +359,9 @@ async function loadDashboard() {
       );
 
 
-    if (scoreError) {
+    if (
+      scoreError
+    ) {
 
       showMessage(
         "Scores konnten nicht geladen werden: " +
@@ -237,352 +372,449 @@ async function loadDashboard() {
     }
 
 
-    scores = scoreData || [];
+    scores =
+      scoreData || [];
 
   }
 
 
 
-  // ============================================
-  // SCORES NACH SPIELER SORTIEREN
-  // ============================================
+  // =============================================
+  // SCORE MAP
+  // =============================================
+
 
   const scoreMap = {};
 
 
-  scores.forEach(score => {
+  scores.forEach(
+    score => {
 
-    if (!scoreMap[score.player_id]) {
 
-      scoreMap[score.player_id] = {};
+      if (
+        !scoreMap[
+          score.player_id
+        ]
+      ) {
+
+        scoreMap[
+          score.player_id
+        ] = {};
+
+      }
+
+
+      const position =
+        score
+          .route_stop
+          ?.position;
+
+
+      if (
+        position
+      ) {
+
+        scoreMap[
+          score.player_id
+        ][position] =
+          score.sips;
+
+      }
 
     }
-
-
-    const position =
-      score.route_stop.position;
-
-
-    scoreMap[score.player_id][position] =
-      score.sips;
-
-  });
-
-
-
-  // ============================================
-  // PLAYER DATEN BAUEN
-  // ============================================
-
-  playersData =
-    (players || []).map(player => {
-
-      return {
-
-        id:
-          player.id,
-
-        name:
-          player.name,
-
-        group:
-          player.group?.group_number || 0,
-
-        completed:
-          player.completed === true,
-
-        scores:
-          scoreMap[player.id] || {}
-
-      };
-
-    });
-
-
-
-  // ============================================
-  // STATS
-  // ============================================
-
-  $("#players").textContent =
-    playersData.length;
-
-
-  $("#finished").textContent =
-    playersData.filter(
-      player => player.completed
-    ).length;
-
-
-  $("#groups").textContent =
-    new Set(
-      playersData.map(
-        player => player.group
-      )
-    ).size;
-
-
-  $("#holes").textContent =
-    playersData.reduce(
-      (total, player) => {
-
-        return (
-          total +
-          Object.keys(
-            player.scores
-          ).length
-        );
-
-      },
-      0
-    );
-
-
-
-  showMessage(
-    "Zuletzt aktualisiert: " +
-    new Date().toLocaleTimeString(
-      "de-DE"
-    )
   );
 
 
+
+  // =============================================
+  // PLAYER DATA
+  // =============================================
+
+
+  playersData =
+    (players || [])
+      .map(
+        player => {
+
+
+          return {
+
+            id:
+              player.id,
+
+            name:
+              player.name,
+
+            group:
+              player
+                .group
+                ?.group_number || 0,
+
+            completed:
+              player.completed === true,
+
+            scores:
+              scoreMap[
+                player.id
+              ] || {}
+
+          };
+
+        }
+      );
+
+
+
+  // =============================================
+  // UPDATE STATISTICS
+  // =============================================
+
+
+  updateStatistics();
+
+
+
+  // =============================================
+  // RENDER
+  // =============================================
+
+
   renderTable();
+
+
+  showMessage(
+
+    "Zuletzt aktualisiert: " +
+
+    new Date()
+      .toLocaleTimeString(
+        "de-DE"
+      )
+
+  );
 
 }
 
 
 
-// ============================================
-// TABLE RENDER
-// ============================================
+// =============================================
+// STATISTICS
+// =============================================
 
-function renderTable() {
-
-  const search =
-    $("#search")
-      .value
-      .trim()
-      .toLowerCase();
+function updateStatistics() {
 
 
+  // PLAYERS
 
-  let filtered =
-    playersData.filter(player => {
-
-
-      // GROUP FILTER
-
-      let matchesFilter = true;
+  const playersElement =
+    $("#players");
 
 
-      if (
-        activeFilter ===
-        "finished"
-      ) {
+  if (
+    playersElement
+  ) {
 
-        matchesFilter =
-          player.completed;
+    playersElement.textContent =
+      playersData.length;
 
-      }
-
-
-      else if (
-        activeFilter !==
-        "all"
-      ) {
-
-        matchesFilter =
-          String(player.group) ===
-          activeFilter;
-
-      }
+  }
 
 
 
-      // SEARCH
+  // FINISHED
 
-      const matchesSearch =
-
-        !search ||
-
-        player.name
-          .toLowerCase()
-          .includes(search);
+  const finishedElement =
+    $("#finished");
 
 
+  if (
+    finishedElement
+  ) {
 
-      return (
-        matchesFilter &&
-        matchesSearch
+    finishedElement.textContent =
+
+      playersData
+        .filter(
+          player =>
+            player.completed
+        )
+        .length;
+
+  }
+
+
+
+  // GROUPS
+
+  const groupsElement =
+    $("#groups");
+
+
+  if (
+    groupsElement
+  ) {
+
+
+    const groups =
+      new Set(
+
+        playersData
+
+          .map(
+            player =>
+              player.group
+          )
+
+          .filter(
+            group =>
+              group > 0
+          )
+
       );
 
-    });
+
+    groupsElement.textContent =
+      groups.size;
+
+  }
 
 
 
-  // ============================================
-  // SORTIERUNG
-  // ============================================
+  // HOLES COMPLETED
 
-  filtered.sort((a, b) => {
-
-    // Fertige Spieler zuerst
-
-    if (
-      a.completed !==
-      b.completed
-    ) {
-
-      return (
-        b.completed -
-        a.completed
-      );
-
-    }
+  const holesElement =
+    $("#holes");
 
 
-    // Danach Gruppe
-
-    if (
-      a.group !==
-      b.group
-    ) {
-
-      return (
-        a.group -
-        b.group
-      );
-
-    }
+  if (
+    holesElement
+  ) {
 
 
-    // Danach Name
+    const completedHoles =
 
-    return (
-      a.name.localeCompare(
-        b.name
-      )
-    );
+      playersData
+        .reduce(
 
-  });
+          (
+            total,
+            player
+          ) => {
 
-
-
-  // ============================================
-  // HTML
-  // ============================================
-
-  $("#rows").innerHTML =
-
-    filtered.map(player => {
-
-
-      const values =
-        Array.from(
-          { length: 9 },
-          (_, index) => {
 
             return (
-              player.scores[
-                index + 1
-              ] ?? "–"
-            );
 
-          }
-        );
+              total +
 
+              Object
+                .keys(
+                  player.scores
+                )
+                .length
 
-      const completedHoles =
-        values.filter(
-          value =>
-            value !== "–"
-        ).length;
-
-
-      const total =
-        values.reduce(
-          (sum, value) => {
-
-            if (
-              value === "–"
-            ) {
-
-              return sum;
-
-            }
-
-            return (
-              sum +
-              Number(value)
             );
 
           },
+
           0
+
         );
 
 
-      const status =
-        player.completed
-          ? "FINISHED"
-          : "PLAYING";
+    holesElement.textContent =
+      completedHoles;
+
+  }
+
+}
 
 
-      return `
 
-        <tr>
+// =============================================
+// RENDER TABLE
+// =============================================
 
-          <td>
-            ${escapeHtml(
-              player.name
-            )}
-          </td>
+function renderTable() {
 
 
-          <td class="orange">
-
-            G${player.group}
-
-          </td>
+  const searchInput =
+    $("#search");
 
 
-          <td class="${
-            player.completed
-              ? "orange"
-              : ""
-          }">
-
-            ${status}
-
-          </td>
+  const search =
+    searchInput
+      ? searchInput
+          .value
+          .trim()
+          .toLowerCase()
+      : "";
 
 
-          <td>
 
-            ${completedHoles}/9
-
-          </td>
-
-
-          ${values
-            .map(
-              value =>
-                `<td>${value}</td>`
-            )
-            .join("")}
+  // =============================================
+  // FILTER
+  // =============================================
 
 
-          <td class="orange">
+  let filtered =
+    playersData
+      .filter(
+        player => {
 
-            ${total}
 
-          </td>
+          let matchesFilter =
+            true;
 
-        </tr>
 
-      `;
 
-    }).join("");
+          // FINISHED
+
+          if (
+            activeFilter ===
+            "finished"
+          ) {
+
+            matchesFilter =
+              player.completed;
+
+          }
+
+
+
+          // GROUP FILTER
+
+          else if (
+            activeFilter !==
+            "all"
+          ) {
+
+            matchesFilter =
+
+              String(
+                player.group
+              ) ===
+              activeFilter;
+
+          }
+
+
+
+          // SEARCH
+
+          const matchesSearch =
+
+            !search ||
+
+            player
+              .name
+              .toLowerCase()
+              .includes(
+                search
+              );
+
+
+
+          return (
+
+            matchesFilter &&
+
+            matchesSearch
+
+          );
+
+        }
+      );
+
+
+
+  // =============================================
+  // SORT
+  // =============================================
+
+
+  filtered.sort(
+    (
+      playerA,
+      playerB
+    ) => {
+
+
+      // Finished first
+
+      if (
+        playerA.completed !==
+        playerB.completed
+      ) {
+
+        return (
+
+          Number(
+            playerB.completed
+          ) -
+
+          Number(
+            playerA.completed
+          )
+
+        );
+
+      }
+
+
+
+      // Group
+
+      if (
+        playerA.group !==
+        playerB.group
+      ) {
+
+        return (
+
+          playerA.group -
+
+          playerB.group
+
+        );
+
+      }
+
+
+
+      // Name
+
+      return (
+
+        playerA
+          .name
+          .localeCompare(
+            playerB.name,
+            "de"
+          )
+
+      );
+
+    }
+  );
+
+
+
+  // =============================================
+  // TABLE BODY
+  // =============================================
+
+
+  const rows =
+    $("#rows");
+
+
+  if (
+    !rows
+  ) {
+
+    return;
+
+  }
 
 
 
@@ -590,13 +822,15 @@ function renderTable() {
     filtered.length === 0
   ) {
 
-    $("#rows").innerHTML = `
+
+    rows.innerHTML = `
 
       <tr>
 
         <td colspan="14">
 
-          Keine Spieler gefunden.
+          Keine Spieler
+          in diesem Durchgang gefunden.
 
         </td>
 
@@ -604,128 +838,397 @@ function renderTable() {
 
     `;
 
+
+    return;
+
+  }
+
+
+
+  rows.innerHTML =
+
+    filtered
+
+      .map(
+        player => {
+
+
+          // H1 - H9
+
+          const values =
+
+            Array.from(
+
+              {
+                length: 9
+              },
+
+              (
+                _,
+                index
+              ) => {
+
+
+                return (
+
+                  player
+                    .scores[
+                      index + 1
+                    ]
+
+                  ?? "–"
+
+                );
+
+              }
+
+            );
+
+
+
+          // COMPLETED HOLES
+
+          const completedHoles =
+
+            values
+              .filter(
+                value =>
+                  value !== "–"
+              )
+              .length;
+
+
+
+          // TOTAL
+
+          const total =
+
+            values
+              .reduce(
+
+                (
+                  sum,
+                  value
+                ) => {
+
+
+                  if (
+                    value === "–"
+                  ) {
+
+                    return sum;
+
+                  }
+
+
+                  return (
+
+                    sum +
+
+                    Number(
+                      value
+                    )
+
+                  );
+
+                },
+
+                0
+
+              );
+
+
+
+          // STATUS
+
+          const status =
+
+            player.completed
+              ? "FINISHED"
+              : "PLAYING";
+
+
+
+          // ROW
+
+          return `
+
+            <tr>
+
+
+              <td>
+
+                ${escapeHtml(
+                  player.name
+                )}
+
+              </td>
+
+
+              <td class="orange">
+
+                G${player.group}
+
+              </td>
+
+
+              <td class="${
+                player.completed
+                  ? "orange"
+                  : ""
+              }">
+
+                ${status}
+
+              </td>
+
+
+              <td>
+
+                ${completedHoles}/9
+
+              </td>
+
+
+              ${values
+                .map(
+                  value =>
+
+                    `<td>
+                      ${value}
+                    </td>`
+
+                )
+                .join("")}
+
+
+              <td class="orange">
+
+                ${total}
+
+              </td>
+
+
+            </tr>
+
+          `;
+
+        }
+      )
+
+      .join("");
+
+}
+
+
+
+// =============================================
+// ESCAPE HTML
+// =============================================
+
+function escapeHtml(
+  value
+) {
+
+
+  return String(
+    value
+  )
+  .replace(
+
+    /[&<>"']/g,
+
+    character => ({
+
+      "&":
+        "&amp;",
+
+      "<":
+        "&lt;",
+
+      ">":
+        "&gt;",
+
+      '"':
+        "&quot;",
+
+      "'":
+        "&#39;"
+
+    })[
+      character
+    ]
+
+  );
+
+}
+
+
+
+// =============================================
+// STATUS MESSAGE
+// =============================================
+
+function showMessage(
+  text
+) {
+
+
+  const element =
+    $("#dashMsg");
+
+
+  if (
+    element
+  ) {
+
+    element.textContent =
+      text;
+
   }
 
 }
 
 
 
-// ============================================
-// SECURITY
-// ============================================
-
-function escapeHtml(value) {
-
-  return value.replace(
-    /[&<>"']/g,
-    character => ({
-
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;"
-
-    })[character]
-  );
-
-}
+// =============================================
+// MANUAL REFRESH
+// =============================================
 
 
+const refreshButton =
+  $("#refresh");
 
-// ============================================
-// MESSAGE
-// ============================================
 
-function showMessage(text) {
+if (
+  refreshButton
+) {
 
-  $("#dashMsg").textContent =
-    text;
+  refreshButton
+    .addEventListener(
+      "click",
+      loadDashboard
+    );
 
 }
 
 
 
-// ============================================
-// REFRESH
-// ============================================
-
-$("#refresh")
-  .addEventListener(
-    "click",
-    loadDashboard
-  );
-
-
-
-// ============================================
+// =============================================
 // SEARCH
-// ============================================
-
-$("#search")
-  .addEventListener(
-    "input",
-    renderTable
-  );
+// =============================================
 
 
+const searchInput =
+  $("#search");
 
-// ============================================
-// FILTER
-// ============================================
+
+if (
+  searchInput
+) {
+
+  searchInput
+    .addEventListener(
+      "input",
+      renderTable
+    );
+
+}
+
+
+
+// =============================================
+// FILTER BUTTONS
+// =============================================
+
 
 document
   .querySelectorAll(
     "[data-g]"
   )
-  .forEach(button => {
-
-    button.addEventListener(
-      "click",
-      () => {
-
-        document
-          .querySelectorAll(
-            "[data-g]"
-          )
-          .forEach(btn => {
-
-            btn.classList.remove(
-              "active"
-            );
-
-          });
+  .forEach(
+    button => {
 
 
-        button.classList.add(
-          "active"
+      button
+        .addEventListener(
+          "click",
+          () => {
+
+
+            document
+              .querySelectorAll(
+                "[data-g]"
+              )
+              .forEach(
+                otherButton => {
+
+
+                  otherButton
+                    .classList
+                    .remove(
+                      "active"
+                    );
+
+                }
+              );
+
+
+            button
+              .classList
+              .add(
+                "active"
+              );
+
+
+            activeFilter =
+              button.dataset.g;
+
+
+            renderTable();
+
+          }
         );
 
-
-        activeFilter =
-          button.dataset.g;
-
-
-        renderTable();
-
-      }
-    );
-
-  });
+    }
+  );
 
 
 
-// ============================================
+// =============================================
 // START
-// ============================================
-
-loadDashboard();
+// =============================================
 
 
+// First load all available events.
+// loadEvents() then automatically loads
+// the newest event.
 
-// AUTO REFRESH ALLE 15 SEKUNDEN
+loadEvents();
+
+
+
+// =============================================
+// AUTO REFRESH
+// =============================================
+
+
+// Every 15 seconds only reload
+// the currently selected event.
 
 setInterval(
-  loadDashboard,
+  () => {
+
+
+    if (
+      selectedEventId
+    ) {
+
+      loadDashboard();
+
+    }
+
+  },
+
   15000
 );
