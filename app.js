@@ -373,21 +373,24 @@ $("#joinForm")
       error
     } = await sb
       .from("players")
-      .insert({
+.insert({
 
-        id:
-          playerId,
+  id:
+    playerId,
 
-        event_id:
-          eventId,
+  event_id:
+    eventId,
 
-        group_id:
-          groupId,
+  group_id:
+    groupId,
 
-        name:
-          playerName
+  name:
+    playerName,
 
-      });
+  run_number:
+    currentRun
+
+});
 
 
     if (
