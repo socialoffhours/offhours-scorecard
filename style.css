@@ -247,3 +247,137 @@
   border-color: var(--o);
 
 }
+/* =========================================
+   OFFHOURS RUN CONTROLS
+   ========================================= */
+
+.runControls {
+
+  display: flex;
+
+  justify-content:
+    space-between;
+
+  align-items:
+    center;
+
+  gap: 25px;
+
+  padding: 22px;
+
+  margin-bottom: 25px;
+
+  border:
+    1px solid var(--line);
+
+  background:
+    #090909;
+
+}
+
+
+.runControls small {
+
+  display: block;
+
+  margin-bottom: 7px;
+
+  color: #666;
+
+}
+
+
+.runControls strong {
+
+  color: var(--o);
+
+  font-size: 22px;
+
+}
+
+
+.runButtons {
+
+  display: flex;
+
+  gap: 10px;
+
+}
+
+
+.archiveButton {
+
+  background:
+    transparent;
+
+  border:
+    1px solid #333;
+
+  color:
+    #888;
+
+}
+
+
+.archiveButton:hover {
+
+  border-color:
+    var(--o);
+
+  color:
+    var(--o);
+
+}
+
+
+.resetButton {
+
+  background:
+    var(--o);
+
+  color:
+    #050505;
+
+}
+
+
+.archiveMode {
+
+  border-color:
+    var(--o);
+
+}
+
+
+@media(max-width:700px) {
+
+  .runControls {
+
+    align-items:
+      flex-start;
+
+    flex-direction:
+      column;
+
+  }
+
+
+  .runButtons {
+
+    width:
+      100%;
+
+    flex-direction:
+      column;
+
+  }
+
+
+  .runButtons button {
+
+    width:
+      100%;
+
+  }
+
+}
